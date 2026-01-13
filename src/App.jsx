@@ -80,7 +80,6 @@ const repairAgents = (loadedAgents) => {
     }));
 };
 
-// --- HELPER FOR COLORS (ADDED FIX) ---
 const getLegendColor = (color) => {
     const map = {
         orange: 'bg-orange-500',
@@ -257,7 +256,7 @@ const ScheduleCell = memo(({ agentName, assignment, date, dayIndex, onClick, con
 });
 
 // --- SUB-COMPONENT: SCHEDULE TABLE ---
-const ScheduleTable = memo(({ schedule, visibleAgents, config, isDarkMode, zoomLevel, setZoomLevel, onCellClick, onDayClick }) => {
+const ScheduleTable = memo(({ schedule, visibleAgents, config, isDarkMode, zoomLevel, setZoomLevel, onCellClick, onDayClick, searchTerm, setSearchTerm, shiftFilter, setShiftFilter }) => {
     if (!schedule) return null;
 
     const getSafeStats = (day, shiftId) => {
@@ -269,17 +268,46 @@ const ScheduleTable = memo(({ schedule, visibleAgents, config, isDarkMode, zoomL
 
     return (
         <GlassCard className="p-0 overflow-hidden border-t-4 border-t-orange-500" isDarkMode={isDarkMode}>
-            <div className={`p-6 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900/50 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
+            <div className={`p-6 border-b flex flex-col md:flex-row justify-between items-end md:items-center gap-4 ${isDarkMode ? 'bg-slate-900/50 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
                 <h3 className={`text-xl font-bold flex items-center gap-3 uppercase tracking-wider ${isDarkMode ? 'text-white' : 'text-slate-900'}`}><TrendingUp className="w-6 h-6 text-orange-500" /> Master Schedule</h3>
-                <div className="flex items-center gap-6">
+                
+                <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
+                    {/* Search in Table Header */}
+                    <div className="relative group flex-1 md:flex-none">
+                        <Search className={`absolute left-2 top-2 w-3 h-3 transition ${isDarkMode ? 'text-slate-500 group-focus-within:text-orange-500' : 'text-slate-400 group-focus-within:text-orange-500'}`} />
+                        <input 
+                            type="text" 
+                            placeholder="Filter..." 
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className={`w-full md:w-32 pl-7 pr-2 py-1 text-[10px] font-bold rounded-lg border outline-none transition ${isDarkMode ? 'bg-slate-950/50 border-white/10 text-white focus:border-orange-500' : 'bg-white border-slate-200 text-slate-700 focus:border-orange-500'}`} 
+                        />
+                    </div>
+
+                    {/* Filter in Table Header */}
+                    <div className="relative flex-1 md:flex-none">
+                        <Filter className={`absolute left-2 top-2 w-3 h-3 pointer-events-none ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`} />
+                        <select 
+                            value={shiftFilter} 
+                            onChange={(e) => setShiftFilter(e.target.value)}
+                            className={`w-full md:w-auto pl-7 pr-6 py-1 text-[10px] font-bold rounded-lg border outline-none appearance-none cursor-pointer transition ${isDarkMode ? 'bg-slate-950/50 border-white/10 text-white focus:border-blue-500' : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500'}`}
+                        >
+                            <option value="all">All</option>
+                            {config.shifts?.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                    </div>
+
                     <div className={`flex items-center gap-2 border-r pr-6 ${isDarkMode ? 'border-white/10' : 'border-slate-200'}`}>
                         <button onClick={() => setZoomLevel(Math.max(0.5, zoomLevel - 0.1))} className={`p-1 hover:text-orange-500 transition ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}><ZoomOut className="w-4 h-4" /></button>
                         <span className={`text-[10px] font-mono w-8 text-center ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{Math.round(zoomLevel * 100)}%</span>
                         <button onClick={() => setZoomLevel(Math.min(1.5, zoomLevel + 0.1))} className={`p-1 hover:text-orange-500 transition ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}><ZoomIn className="w-4 h-4" /></button>
                     </div>
-                    {config.shifts?.map(s => (
-                        <div key={s.id} className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest"><div className={`w-2 h-2 rounded-full bg-${s.color}-500 shadow-[0_0_8px_currentColor]`}></div> {s.name}</div>
-                    ))}
+                    
+                    <div className="hidden lg:flex gap-3">
+                        {config.shifts?.map(s => (
+                            <div key={s.id} className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest"><div className={`w-2 h-2 rounded-full bg-${s.color}-500 shadow-[0_0_8px_currentColor]`}></div> {s.name}</div>
+                        ))}
+                    </div>
                 </div>
             </div>
             <div className="relative overflow-auto custom-scrollbar max-h-[75vh]" style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top left', width: `${100 / zoomLevel}%` }}>
@@ -1293,23 +1321,68 @@ const WorkforceSchedulerContent = () => {
 
         {/* TEAM MANAGEMENT */}
         <GlassCard className="mb-10 p-6" isDarkMode={isDarkMode}>
-          <div className={`flex justify-between items-center mb-6 border-b pb-4 ${isDarkMode ? 'border-white/10' : 'border-slate-200'}`}>
+          <div className={`flex flex-col md:flex-row justify-between items-end md:items-center gap-4 mb-6 border-b pb-4 ${isDarkMode ? 'border-white/10' : 'border-slate-200'}`}>
+            
+            {/* Title & Zoom */}
             <div className="flex items-center gap-4">
-                <h2 className="text-xl font-bold flex items-center gap-3 text-orange-500 uppercase tracking-wider"><Users className="w-6 h-6" /> Team Management <span className={`text-xs px-2 py-1 rounded border ${isDarkMode ? 'bg-white/10 text-slate-300 border-white/5' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>{agents.length} AGENTS</span></h2>
-                <div className="flex items-center gap-2">
-                    <button onClick={() => setTeamZoom(Math.max(0.5, teamZoom - 0.1))} className="p-1 hover:text-orange-500"><ZoomOut className="w-4 h-4" /></button>
-                    <span className="text-xs font-mono">{Math.round(teamZoom * 100)}%</span>
-                    <button onClick={() => setTeamZoom(Math.min(1.5, teamZoom + 0.1))} className="p-1 hover:text-orange-500"><ZoomIn className="w-4 h-4" /></button>
+                <h2 className="text-xl font-bold flex items-center gap-3 text-orange-500 uppercase tracking-wider">
+                    <Users className="w-6 h-6" /> Team Management 
+                    <span className={`text-xs px-2 py-1 rounded border ${isDarkMode ? 'bg-white/10 text-slate-300 border-white/5' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>{agents.length} AGENTS</span>
+                </h2>
+                {/* Zoom Controls */}
+                <div className={`hidden md:flex items-center gap-1 px-2 py-1 rounded-lg border ${isDarkMode ? 'bg-slate-950/30 border-white/5' : 'bg-slate-100 border-slate-200'}`}>
+                    <button onClick={() => setTeamZoom(Math.max(0.5, teamZoom - 0.1))} className={`p-1 hover:text-orange-500 transition ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}><ZoomOut className="w-3 h-3" /></button>
+                    <span className={`text-[10px] font-mono w-8 text-center ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{Math.round(teamZoom * 100)}%</span>
+                    <button onClick={() => setTeamZoom(Math.min(1.5, teamZoom + 0.1))} className={`p-1 hover:text-orange-500 transition ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}><ZoomIn className="w-3 h-3" /></button>
                 </div>
             </div>
-            <div className="flex gap-2">
-                <button onClick={addAgent} className={`px-5 py-2.5 text-xs font-bold flex items-center gap-2 transition uppercase tracking-widest border rounded-lg shadow-lg ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-600' : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'}`}><Plus className="w-4 h-4" /> Add Agent</button>
+
+            {/* Search & Actions */}
+            <div className="flex flex-wrap gap-3 w-full md:w-auto">
+                
+                {/* Search Bar */}
+                <div className="relative flex-1 md:w-64 group">
+                    <Search className={`absolute left-3 top-2.5 w-4 h-4 transition ${isDarkMode ? 'text-slate-500 group-focus-within:text-orange-500' : 'text-slate-400 group-focus-within:text-orange-500'}`} />
+                    <input 
+                        type="text" 
+                        placeholder="Search agents..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className={`w-full pl-9 pr-4 py-2 text-xs font-bold rounded-lg border outline-none transition ${isDarkMode ? 'bg-slate-950/50 border-white/10 text-white focus:border-orange-500' : 'bg-white border-slate-200 text-slate-700 focus:border-orange-500'}`} 
+                    />
+                </div>
+
+                {/* Filter Dropdown */}
+                <div className="relative">
+                    <Filter className={`absolute left-3 top-2.5 w-4 h-4 pointer-events-none ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`} />
+                    <select 
+                        value={shiftFilter} 
+                        onChange={(e) => setShiftFilter(e.target.value)}
+                        className={`pl-9 pr-8 py-2 text-xs font-bold rounded-lg border outline-none appearance-none cursor-pointer transition ${isDarkMode ? 'bg-slate-950/50 border-white/10 text-white focus:border-blue-500' : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500'}`}
+                    >
+                        <option value="all">All Shifts</option>
+                        {config.shifts.map(s => <option key={s.id} value={s.id}>{s.name} Only</option>)}
+                        <option value="any">Flex Only</option>
+                    </select>
+                </div>
+
+                {/* Add Button */}
+                <button onClick={addAgent} className={`px-5 py-2 text-xs font-bold flex items-center gap-2 transition uppercase tracking-widest border rounded-lg shadow-lg hover:scale-105 active:scale-95 ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-600' : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'}`}>
+                    <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Add Agent</span>
+                </button>
             </div>
           </div>
+          
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar" style={{ transform: `scale(${teamZoom})`, transformOrigin: 'top left', width: `${100 / teamZoom}%` }}>
-            {agents.map((agent, index) => (
+            {visibleAgents.map((agent, index) => (
                 <AgentCard key={index} index={index} agent={agent} shifts={config.shifts} updateAgent={updateAgent} updateAgentPreferredDays={updateAgentPreferredDays} onDeleteClick={handleRemoveAgent} setPtoModalAgentIndex={setPtoModalAgentIndex} isDarkMode={isDarkMode} />
             ))}
+            {visibleAgents.length === 0 && (
+                <div className="col-span-full py-12 text-center opacity-50">
+                    <Search className="w-12 h-12 mx-auto mb-2 text-slate-500" />
+                    <p className="text-sm font-bold">No agents found matching "{searchTerm}"</p>
+                </div>
+            )}
           </div>
         </GlassCard>
 
@@ -1369,6 +1442,10 @@ const WorkforceSchedulerContent = () => {
             setZoomLevel={setZoomLevel}
             onCellClick={handleCellClick} 
             onDayClick={handleDayStatsClick} 
+            searchTerm={searchTerm} 
+            setSearchTerm={setSearchTerm} 
+            shiftFilter={shiftFilter} 
+            setShiftFilter={setShiftFilter}
         />
 
         {/* DAY STATS MODAL */}
