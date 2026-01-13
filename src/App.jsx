@@ -80,6 +80,20 @@ const repairAgents = (loadedAgents) => {
     }));
 };
 
+// --- HELPER FOR COLORS (ADDED FIX) ---
+const getLegendColor = (color) => {
+    const map = {
+        orange: 'bg-orange-500',
+        blue: 'bg-blue-500',
+        slate: 'bg-slate-500',
+        emerald: 'bg-emerald-500',
+        rose: 'bg-rose-500',
+        purple: 'bg-purple-500',
+        cyan: 'bg-cyan-500'
+    };
+    return map[color] || 'bg-slate-500';
+};
+
 // --- HOOKS ---
 function useDebounce(value, delay) {
   const [debouncedValue, setDebouncedValue] = useState(value);
