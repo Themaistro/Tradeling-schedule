@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
-import { Settings, AlertCircle, CheckCircle, Calendar, Users, TrendingUp, RefreshCw, X, Plus, Info, Moon, Sun, Clock, Layout, Plane, BarChart2, Trash2, Edit3, Briefcase, Download, Upload, FileText, Save, List, ShieldAlert, Phone, MessageSquare, FileQuestion, Monitor, Award, PieChart, Copy, ChevronRight, Menu, Zap, Search, Filter, ZoomIn, ZoomOut, Loader2, AlertTriangle, Check, AlertOctagon, ArrowRight, Shuffle, Activity, History, PlayCircle, RotateCcw } from 'lucide-react';
+import { Settings, AlertCircle, CheckCircle, Calendar, Users, TrendingUp, RefreshCw, X, Plus, Info, Moon, Sun, Clock, Layout, Plane, BarChart2, Trash2, Edit3, Briefcase, Download, Upload, FileText, Save, List, ShieldAlert, Phone, MessageSquare, FileQuestion, Monitor, Award, PieChart, Copy, ChevronRight, Menu, Zap, Search, Filter, ZoomIn, ZoomOut, Loader2, AlertTriangle, Check, AlertOctagon, ArrowRight, Shuffle, Activity, History, PlayCircle, RotateCcw, Lock } from 'lucide-react';
 
 // --- CONSTANTS ---
 const ALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -9,9 +9,9 @@ const COLOR_OPTIONS = ['orange', 'blue', 'slate', 'emerald', 'rose', 'purple', '
 const YEAR_OPTIONS = Array.from({length: 5}, (_, i) => new Date().getFullYear() + i);
 
 // --- STORAGE KEYS ---
-const CONFIG_KEY = 'tradeling_config_v62_final';
-const AGENTS_KEY = 'tradeling_agents_v62_final';
-const SCHEDULE_PREFIX = 'tradeling_schedule_v62_';
+const CONFIG_KEY = 'tradeling_config_v63';
+const AGENTS_KEY = 'tradeling_agents_v63';
+const SCHEDULE_PREFIX = 'tradeling_schedule_v63_';
 
 const DEFAULT_SHIFTS = [
     { id: 'am', name: 'Morning', start: '09:00', end: '18:00', color: 'orange' },
@@ -22,7 +22,7 @@ const DEFAULT_CONFIG = {
     projectStartDate: new Date().toISOString().split('T')[0], 
     scheduleBuildCutoff: 20,
     maxConsecutiveDays: 5,
-    generationRange: 'full',
+    generationScope: 'full', // 'full', 'half_1', 'half_2'
     shifts: DEFAULT_SHIFTS,
     rules: ALL_DAYS.reduce((acc, day) => {
         const isWeekend = day === 'Saturday' || day === 'Sunday';
@@ -57,6 +57,7 @@ const repairConfig = (loadedConfig) => {
         const safe = { ...DEFAULT_CONFIG, ...loadedConfig };
         if (!Array.isArray(safe.shifts)) safe.shifts = DEFAULT_SHIFTS;
         if (!safe.rules) safe.rules = {};
+        if (!safe.generationScope) safe.generationScope = 'full';
         ALL_DAYS.forEach(day => {
             if (!safe.rules[day]) safe.rules[day] = {};
             safe.shifts.forEach(shift => {
@@ -215,7 +216,7 @@ const AgentCard = memo(({ agent, index, shifts, updateAgent, updateAgentPreferre
 });
 
 // --- SUB-COMPONENT: SCHEDULE CELL ---
-const ScheduleCell = memo(({ agentName, assignment, date, dayIndex, onClick, config, isDarkMode }) => {
+const ScheduleCell = memo(({ agentName, assignment, date, dayIndex, onClick, config, isDarkMode, isLocked }) => {
     let style = isDarkMode ? "bg-slate-800 text-slate-500 border-slate-700" : "bg-slate-100 text-slate-400 border-slate-200"; 
     let text = "OFF"; let icon = null; let subText = null;
 
@@ -232,19 +233,12 @@ const ScheduleCell = memo(({ agentName, assignment, date, dayIndex, onClick, con
     else if (assignment?.status === 'OFF' && assignment.isForcedRest) { text = "REST"; style = "bg-red-950/20 text-red-500/50"; icon = "🛑"; }
 
     return (
-        <td className={`p-1 border-l ${isDarkMode ? 'border-white/5' : 'border-slate-100'}`} onClick={() => onClick(dayIndex, agentName, assignment, date)}>
+        <td className={`p-1 border-l ${isDarkMode ? 'border-white/5' : 'border-slate-100'} ${isLocked ? 'opacity-50 pointer-events-none' : ''}`} onClick={() => !isLocked && onClick(dayIndex, agentName, assignment, date)}>
             <div className={`px-2 py-3 text-[10px] flex flex-col items-center justify-center gap-1 font-bold transition-all hover:scale-[1.02] cursor-pointer shadow-sm rounded ${style}`}>
                 <div className="flex items-center gap-1 uppercase tracking-wide"><span>{icon}</span><span>{text}</span></div>
                 {subText && <div className="text-[8px] opacity-60 font-mono tracking-tighter">{subText}</div>}
             </div>
         </td>
-    );
-}, (prev, next) => {
-    return (
-        prev.assignment === next.assignment && 
-        prev.agentName === next.agentName && 
-        prev.isDarkMode === next.isDarkMode &&
-        prev.config === next.config
     );
 });
 
@@ -300,6 +294,7 @@ const ScheduleTable = memo(({ schedule, visibleAgents, config, isDarkMode, zoomL
                                         onClick={onCellClick}
                                         config={config}
                                         isDarkMode={isDarkMode}
+                                        isLocked={day.isLocked}
                                     />
                                 ))}
                                 <td className={`p-4 cursor-pointer border-l ${isDarkMode ? 'border-white/5 bg-slate-900/30' : 'border-slate-200 bg-white'}`} onClick={() => onDayClick(day)}>
@@ -351,13 +346,13 @@ const WorkforceSchedulerContent = () => {
   });
 
   const [schedule, setSchedule] = useState(null);
-  
   const [toasts, setToasts] = useState([]);
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [progress, setProgress] = useState(0);
   const [saveStatus, setSaveStatus] = useState('saved');
   const [transitionModalOpen, setTransitionModalOpen] = useState(false);
   const [transitionData, setTransitionData] = useState(null);
+  const [midMonthTransition, setMidMonthTransition] = useState(false); // New flag for mid-month trigger
 
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -372,8 +367,7 @@ const WorkforceSchedulerContent = () => {
   const [ptoModalAgentIndex, setPtoModalAgentIndex] = useState(null); 
   const [ptoRangeStart, setPtoRangeStart] = useState('');
   const [ptoRangeEnd, setPtoRangeEnd] = useState('');
-  const [newPtoDate, setNewPtoDate] = useState('');
-   
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [shiftFilter, setShiftFilter] = useState('all');
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -580,6 +574,7 @@ const WorkforceSchedulerContent = () => {
       if (!schedule) return;
       let csv = "Date,Day,Total Staff," + agents.map(a => a.name).join(",") + "\n";
       schedule.forEach(day => {
+          if (!day) return;
           let row = `${day.date},${day.day},${day.total}`;
           agents.forEach(agent => {
               const assign = day.assignments[agent.name];
@@ -594,7 +589,7 @@ const WorkforceSchedulerContent = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `schedule_v62_${MONTH_NAMES[selectedMonth]}.csv`;
+      link.download = `schedule_v63_${MONTH_NAMES[selectedMonth]}.csv`;
       link.click();
       addToast("CSV Exported", "success");
   };
@@ -628,53 +623,81 @@ const WorkforceSchedulerContent = () => {
       return assignments;
   };
 
-  const getTransitionDays = () => {
-      const prevMonth = new Date(selectedYear, selectedMonth - 1, 1);
-      const lastDay = new Date(prevMonth.getFullYear(), prevMonth.getMonth() + 1, 0);
-      const days = [];
-      // Get last 7 days
-      for(let i=6; i>=0; i--) {
-          const d = new Date(lastDay);
-          d.setDate(lastDay.getDate() - i);
-          days.push(d);
+  const getTransitionDays = (startFromMidMonth = false) => {
+      if (!startFromMidMonth) {
+          // Standard: Get last 7 days of PREVIOUS month
+          const prevMonth = new Date(selectedYear, selectedMonth - 1, 1);
+          const lastDay = new Date(prevMonth.getFullYear(), prevMonth.getMonth() + 1, 0);
+          const days = [];
+          for(let i=6; i>=0; i--) {
+              const d = new Date(lastDay);
+              d.setDate(lastDay.getDate() - i);
+              days.push(d);
+          }
+          return days;
+      } else {
+          // Mid-Month: Get days 9-15 of CURRENT month
+          const days = [];
+          for(let i=9; i<=15; i++) {
+              days.push(new Date(selectedYear, selectedMonth, i));
+          }
+          return days;
       }
-      return days;
   };
 
   const handleGenerateClick = () => {
       if(schedule) {
-          openConfirm("Regenerate?", "Overwrite existing?", () => { closeConfirm(); checkHistoryAndGenerate(); }, 'warning', isDarkMode);
+          openConfirm("Regenerate?", "Overwrite existing schedule?", () => { closeConfirm(); checkHistoryAndGenerate(); }, 'warning', isDarkMode);
       } else {
           checkHistoryAndGenerate();
       }
   };
 
   const checkHistoryAndGenerate = () => {
-      // Check Project Start Date
+      const mode = config.generationScope; // 'full', 'half_1', 'half_2'
+
+      // If generating Phase 2, we need Phase 1 history
+      if (mode === 'half_2') {
+          // Check if we have valid data for Day 15
+          if (schedule && schedule.length >= 15 && schedule[14]?.dateStr) {
+              // We have local data, use it (compute state automatically)
+              generateSchedule(null, true); // true = use existing schedule for state
+              return;
+          } else {
+              // No local data for Phase 1. Force manual input for Days 9-15.
+              setMidMonthTransition(true);
+              const days = getTransitionDays(true);
+              setTransitionData({
+                  days: days.map(d => ({ date: d, str: d.toLocaleDateString('en-US', {weekday:'short', day:'numeric'}) })),
+                  values: agents.reduce((acc, a) => ({ ...acc, [a.name]: Array(7).fill(true) }), {}) 
+              });
+              setTransitionModalOpen(true);
+              return;
+          }
+      }
+
+      // Standard Month Start Logic
       const projectStart = new Date(config.projectStartDate);
       const currentStart = new Date(selectedYear, selectedMonth, 1);
       
-      // If current month is same or before project start, generate fresh
       if (currentStart <= projectStart) {
           generateSchedule();
           return;
       }
 
-      // Check if previous month exists
       const prevDate = new Date(selectedYear, selectedMonth - 1, 1);
       const prevKey = `${SCHEDULE_PREFIX}${prevDate.getFullYear()}_${prevDate.getMonth()}`;
       const savedPrev = localStorage.getItem(prevKey);
       
       if(!savedPrev) {
-          // No history -> Open Transition Modal
-          const days = getTransitionDays();
+          setMidMonthTransition(false);
+          const days = getTransitionDays(false);
           setTransitionData({ 
               days: days.map(d => ({ date: d, str: d.toLocaleDateString('en-US', {weekday:'short', day:'numeric'}) })),
               values: agents.reduce((acc, a) => ({ ...acc, [a.name]: Array(7).fill(true) }), {}) 
           });
           setTransitionModalOpen(true);
       } else {
-          // Has history -> Parse and go
           const parsed = JSON.parse(savedPrev);
           generateSchedule(parsed.finalState);
       }
@@ -689,16 +712,19 @@ const WorkforceSchedulerContent = () => {
               if(history[i]) streak++;
               else break;
           }
-          // Calculate work done since most recent Monday for weekly limit
-          // Identify index of most recent Monday
-          let mondayIndex = -1;
-          transitionData.days.forEach((d, idx) => { if(d.date.getDay() === 1) mondayIndex = idx; });
-          
+          // Calculate weekly load
           let weekly = 0;
-          if (mondayIndex !== -1) {
-             for(let i=mondayIndex; i<7; i++) {
-                 if(history[i]) weekly++;
+          if (midMonthTransition) {
+             // For mid-month, count from most recent Monday in the 9-15 range
+             let mondayIndex = -1;
+             transitionData.days.forEach((d, idx) => { if(d.date.getDay() === 1) mondayIndex = idx; });
+             if (mondayIndex !== -1) {
+                 for(let i=mondayIndex; i<7; i++) if(history[i]) weekly++;
+             } else {
+                 weekly = history.filter(Boolean).length; // Fallback
              }
+          } else {
+             weekly = history.filter(Boolean).length; 
           }
           computedState[a.name] = { consecutive: streak, weekly };
       });
@@ -706,7 +732,7 @@ const WorkforceSchedulerContent = () => {
       generateSchedule(computedState);
   };
 
-  const generateSchedule = async (initialState = {}) => {
+  const generateSchedule = async (initialState = {}, useExistingSchedule = false) => {
     setProcessing(true);
     setWarnings([]);
     setProgress(10);
@@ -734,13 +760,18 @@ const WorkforceSchedulerContent = () => {
 
         const scheduleData = [];
         const newWarnings = [];
-        
-        // Load Initial State
         const agentWeeklyWork = {}; 
         const agentConsecutiveDays = {};
         
+        // Initialize State
+        if (useExistingSchedule && schedule) {
+            // Re-hydrate from existing Day 15 state
+            // Logic: Scan 1-15, calc stats, continue
+            // Simplification: We will just run the logic from scratch for 1-15 to rebuild state, but KEEP the assignments if locked
+        } 
+        
         agents.forEach(a => {
-            if(initialState[a.name]) {
+            if(initialState && initialState[a.name]) {
                 agentConsecutiveDays[a.name] = initialState[a.name].consecutive || 0;
                 agentWeeklyWork[a.name] = initialState[a.name].weekly || 0; 
             } else {
@@ -750,10 +781,16 @@ const WorkforceSchedulerContent = () => {
         });
 
         weeks.forEach((weekDates, wIdx) => {
+             // Reset weekly on Monday
+             if (weekDates[0].getDay() === 1) { // Logic fix: weekDates[0] is always Monday in our loop
+                 agents.forEach(a => agentWeeklyWork[a.name] = 0);
+             }
+
              const weeklyOffs = {};
              const currentDailyOffs = {}; 
              const dayRequirements = {};  
 
+             // Pre-calc capacity
              weekDates.forEach(date => {
                  const dName = date.toLocaleDateString('en-US', { weekday: 'long' });
                  const reqs = getReqs(date, config);
@@ -805,26 +842,46 @@ const WorkforceSchedulerContent = () => {
 
              // Daily Fill
              weekDates.forEach(date => {
-                 // ** CRITICAL FIX: RESET WEEKLY COUNTER ON MONDAY **
-                 if (date.getDay() === 1) { 
-                     agents.forEach(a => agentWeeklyWork[a.name] = 0);
-                 }
-
                  const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
                  const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+                 const dayNum = date.getDate();
                  const isCurrentMonth = date.getMonth() === selectedMonth;
-                 if (!isCurrentMonth && config.generationRange !== 'full') return; 
+                 
+                 // ** SCOPE LOGIC **
+                 let isLocked = false;
+                 let skipGeneration = false;
 
+                 if (config.generationScope === 'half_1' && dayNum > 15 && isCurrentMonth) skipGeneration = true;
+                 if (config.generationScope === 'half_2' && dayNum <= 15 && isCurrentMonth) isLocked = true;
+
+                 // If Locked (Phase 1 during Phase 2 generation):
+                 // We must retrieve the EXISTING assignment to keep state consistent
+                 if (isLocked && schedule && schedule[scheduleData.length]) {
+                     const existingDay = schedule[scheduleData.length];
+                     scheduleData.push({...existingDay, isLocked: true});
+                     
+                     // Update counters based on existing data
+                     Object.keys(existingDay.assignments).forEach(name => {
+                         const assign = existingDay.assignments[name];
+                         if (assign.status === 'WORKING') {
+                             agentWeeklyWork[name]++;
+                             agentConsecutiveDays[name]++;
+                         } else {
+                             agentConsecutiveDays[name] = 0;
+                         }
+                     });
+                     return; // Skip generation logic for this day
+                 }
+
+                 if (skipGeneration || (!isCurrentMonth && config.generationRange !== 'full')) return;
+
+                 // ** REGULAR GENERATION LOGIC **
                  const reqs = getReqs(date, config);
                  const dailyAssigns = {};
                  
                  const available = agents.filter(a => !weeklyOffs[a.name].includes(dayName));
+                 const eligible = available.filter(a => agentWeeklyWork[a.name] < 5); // 5-Day Cap
                  
-                 // ** STRICT 5-DAY RULE ENFORCEMENT **
-                 // Only consider agents who have NOT worked 5 days this week yet
-                 const eligible = available.filter(a => agentWeeklyWork[a.name] < 5);
-                 const forcedOff = available.filter(a => agentWeeklyWork[a.name] >= 5);
-
                  const fixedAgents = eligible.filter(a => a.shiftId !== 'any');
                  const floaters = eligible.filter(a => a.shiftId === 'any');
                  
@@ -880,7 +937,6 @@ const WorkforceSchedulerContent = () => {
                      }
                  });
 
-                 // New: Calculate if shortage happened
                  const hasShortage = config.shifts.some(s => {
                      const req = getReqs(date, config)[s.id]?.minStaff || 0;
                      return (shiftCounts[s.id] || 0) < req;
@@ -897,13 +953,14 @@ const WorkforceSchedulerContent = () => {
                      isCurrentMonth,
                      monthName: date.toLocaleDateString('en-US', { month: 'short' }),
                      dayNum: String(date.getDate()).padStart(2, '0'),
-                     hasShortage // Flag for metrics
+                     hasShortage,
+                     isLocked // For rendering
                  });
              });
              setProgress(30 + Math.round((wIdx / weeks.length) * 60));
         });
 
-        // Save State for Next Month
+        // Save State
         const finalState = {};
         agents.forEach(a => {
             finalState[a.name] = {
@@ -912,7 +969,6 @@ const WorkforceSchedulerContent = () => {
             };
         });
 
-        // Calculate Summary Metrics CORRECTLY
         const totalDaysInMonth = scheduleData.filter(d => d.isCurrentMonth).length;
         const criticalDaysCount = scheduleData.filter(d => d.isCurrentMonth && d.hasShortage).length;
         const optimalDaysCount = totalDaysInMonth - criticalDaysCount;
@@ -920,7 +976,7 @@ const WorkforceSchedulerContent = () => {
 
         const summaryData = {
             healthScore,
-            totalDays: totalDaysInMonth * config.shifts.length, // Total Shifts
+            totalDays: totalDaysInMonth * config.shifts.length,
             optimalDays: optimalDaysCount,
             criticalDays: criticalDaysCount
         };
@@ -932,7 +988,7 @@ const WorkforceSchedulerContent = () => {
         setWarnings(newWarnings);
         setSummary(summaryData);
         setProgress(100);
-        addToast("Schedule generated successfully!", "success");
+        addToast("Schedule generated!", "success");
       } catch (error) { console.error(error); addToast("Generation failed", "error"); } 
       finally { setProcessing(false); }
     }, 500);
@@ -955,22 +1011,6 @@ const WorkforceSchedulerContent = () => {
           localStorage.clear();
           window.location.reload();
       }, 'danger', isDarkMode);
-  };
-
-  // --- RENDER HELPERS ---
-  const getLegendColor = (color) => {
-      const map = { orange: 'bg-orange-500', blue: 'bg-blue-500', slate: 'bg-slate-500', emerald: 'bg-emerald-500', rose: 'bg-rose-500', purple: 'bg-purple-500', cyan: 'bg-cyan-500' };
-      return map[color] || 'bg-slate-500';
-  };
-   
-  const getShiftBorderColor = (color) => {
-      const map = { orange: 'border-l-orange-500', blue: 'border-l-blue-500', slate: 'border-l-slate-500', emerald: 'border-l-emerald-500', rose: 'border-l-rose-500', purple: 'border-l-purple-500', cyan: 'border-l-cyan-500' };
-      return map[color] || 'border-l-slate-500';
-  };
-
-  const getShiftBgColor = (color) => {
-      const map = { orange: 'bg-orange-500/10 text-orange-200', blue: 'bg-blue-500/10 text-blue-200', slate: 'bg-slate-700/50 text-slate-300', emerald: 'bg-emerald-500/10 text-emerald-200', rose: 'bg-rose-500/10 text-rose-200', purple: 'bg-purple-500/10 text-purple-200', cyan: 'bg-cyan-500/10 text-cyan-200' };
-      return map[color] || map.slate;
   };
 
   const handleCellClick = (dayIndex, agentName, currentAssignment, date) => {
@@ -1016,7 +1056,6 @@ const WorkforceSchedulerContent = () => {
     dayData.shiftCoverage = newCoverage;
     dayData.total = total;
     
-    // Update local storage for current view
     const key = `${SCHEDULE_PREFIX}${selectedYear}_${selectedMonth}`;
     const currentData = JSON.parse(localStorage.getItem(key)) || {};
     currentData.schedule = newSchedule;
@@ -1058,65 +1097,6 @@ const WorkforceSchedulerContent = () => {
         type={confirmDialog?.type}
         isDarkMode={isDarkMode}
       />
-
-      {/* TRANSITION MODAL */}
-      {transitionModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-              <GlassCard className="w-full max-w-2xl p-8" isDarkMode={isDarkMode}>
-                  <div className="flex items-center justify-between gap-4 mb-6 pb-6 border-b border-white/10">
-                      <div className="flex items-center gap-4">
-                          <div className="p-3 bg-orange-500/20 rounded-full text-orange-500"><History className="w-8 h-8"/></div>
-                          <div>
-                              <h3 className="text-2xl font-bold text-white">Missing History Detected</h3>
-                              <p className="text-slate-400">Please confirm schedule for last week to ensure continuity.</p>
-                          </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                          <button onClick={() => setTransZoom(Math.max(0.5, transZoom - 0.1))} className="p-1 hover:text-orange-500"><ZoomOut className="w-4 h-4" /></button>
-                          <span className="text-xs font-mono">{Math.round(transZoom * 100)}%</span>
-                          <button onClick={() => setTransZoom(Math.min(1.5, transZoom + 0.1))} className="p-1 hover:text-orange-500"><ZoomIn className="w-4 h-4" /></button>
-                      </div>
-                  </div>
-                  
-                  <div className="overflow-x-auto custom-scrollbar mb-8 border border-white/10 rounded-xl" style={{ transform: `scale(${transZoom})`, transformOrigin: 'top left', width: `${100 / transZoom}%` }}>
-                      <table className="w-full text-sm text-left">
-                          <thead className="bg-white/5 text-slate-400 uppercase text-xs">
-                              <tr>
-                                  <th className="p-4">Agent</th>
-                                  {transitionData.days.map((d, i) => <th key={i} className="p-4 text-center min-w-[80px]">{d.str}</th>)}
-                              </tr>
-                          </thead>
-                          <tbody className="divide-y divide-white/5">
-                              {agents.map(agent => (
-                                  <tr key={agent.name} className="hover:bg-white/5">
-                                      <td className="p-4 font-bold text-white">{agent.name}</td>
-                                      {transitionData.days.map((_, i) => (
-                                          <td key={i} className="p-2 text-center">
-                                              <button 
-                                                  onClick={() => {
-                                                      const newData = {...transitionData};
-                                                      newData.values[agent.name][i] = !newData.values[agent.name][i];
-                                                      setTransitionData(newData);
-                                                  }}
-                                                  className={`w-8 h-8 rounded font-bold transition ${transitionData.values[agent.name][i] ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-600'}`}
-                                              >
-                                                  {transitionData.values[agent.name][i] ? 'W' : 'O'}
-                                              </button>
-                                          </td>
-                                      ))}
-                                  </tr>
-                              ))}
-                          </tbody>
-                      </table>
-                  </div>
-
-                  <div className="flex justify-end gap-4">
-                      <button onClick={() => setTransitionModalOpen(false)} className="px-6 py-3 rounded-xl font-bold text-slate-400 hover:bg-white/5 transition">Cancel</button>
-                      <button onClick={handleTransitionSubmit} className="px-8 py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl shadow-lg shadow-orange-500/20 transition transform hover:scale-105">Confirm & Generate</button>
-                  </div>
-              </GlassCard>
-          </div>
-      )}
 
       {/* BACKGROUND & MAIN CONTENT */}
       {isDarkMode && (
@@ -1196,17 +1176,22 @@ const WorkforceSchedulerContent = () => {
                  <div className="flex flex-wrap gap-8 items-center">
                      <div className={`flex items-center gap-3 px-4 py-2 border rounded-lg ${isDarkMode ? 'bg-slate-950/50 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
                          <Calendar className="w-5 h-5 text-orange-500" />
-                         <span className={`text-xs font-bold uppercase tracking-wide ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>Project Start Date</span>
+                         <span className={`text-xs font-bold uppercase tracking-wide ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>Project Start</span>
                          <input type="date" value={config.projectStartDate} onChange={(e) => setConfig({...config, projectStartDate: e.target.value})} className={`border px-2 py-1 text-sm focus:border-orange-500 outline-none transition rounded ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`} />
                      </div>
                      <div className={`flex items-center gap-3 px-4 py-2 border rounded-lg ${isDarkMode ? 'bg-slate-950/50 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
                          <ShieldAlert className="w-5 h-5 text-orange-500" />
-                         <span className={`text-xs font-bold uppercase tracking-wide ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>Max Consecutive Days</span>
-                         <input type="number" min="1" max="21" value={config.maxConsecutiveDays} onChange={(e) => {
-                             let val = parseInt(e.target.value) || 0;
-                             if(val < 1) val = 1; if(val > 21) val = 21;
-                             setConfig({...config, maxConsecutiveDays: val});
-                         }} className={`w-16 border px-2 py-1 text-sm focus:border-orange-500 outline-none transition text-center rounded ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`} />
+                         <span className={`text-xs font-bold uppercase tracking-wide ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>Max Streak</span>
+                         <input type="number" min="1" max="21" value={config.maxConsecutiveDays} onChange={(e) => setConfig({...config, maxConsecutiveDays: parseInt(e.target.value) || 5})} className={`w-16 border px-2 py-1 text-sm focus:border-orange-500 outline-none transition text-center rounded ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`} />
+                     </div>
+                     <div className={`flex items-center gap-3 px-4 py-2 border rounded-lg ${isDarkMode ? 'bg-slate-950/50 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
+                         <Lock className="w-5 h-5 text-blue-500" />
+                         <span className={`text-xs font-bold uppercase tracking-wide ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>Gen Scope</span>
+                         <select value={config.generationScope} onChange={(e) => setConfig({...config, generationScope: e.target.value})} className={`border px-2 py-1 text-sm focus:border-blue-500 outline-none transition rounded ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`}>
+                             <option value="full">Full Month</option>
+                             <option value="half_1">1st - 15th Only</option>
+                             <option value="half_2">16th - End (Locks 1-15)</option>
+                         </select>
                      </div>
                  </div>
             </div>
@@ -1460,7 +1445,7 @@ const WorkforceSchedulerContent = () => {
                             <div className="p-3 bg-orange-500/20 rounded-full text-orange-500"><History className="w-8 h-8"/></div>
                             <div>
                                 <h3 className="text-2xl font-bold text-white">Missing History Detected</h3>
-                                <p className="text-slate-400">Please confirm schedule for last week to ensure continuity.</p>
+                                <p className="text-slate-400">{midMonthTransition ? "Please enter status for DAYS 9-15 to ensure continuity." : "Please confirm schedule for last week to ensure continuity."}</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
