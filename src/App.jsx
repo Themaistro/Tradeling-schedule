@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
-import { Settings, AlertCircle, CheckCircle, Calendar, Users, TrendingUp, RefreshCw, X, Plus, Info, Moon, Sun, Clock, Layout, Plane, BarChart2, Trash2, Edit3, Briefcase, Download, Upload, FileText, Save, List, ShieldAlert, Phone, MessageSquare, FileQuestion, Monitor, Award, PieChart, Copy, ChevronRight, Menu, Zap, Search, Filter, ZoomIn, ZoomOut, Loader2, AlertTriangle, Check, AlertOctagon, ArrowRight, Shuffle, Activity, History, PlayCircle, RotateCcw, Lock } from 'lucide-react';
+import React, { useState, useEffect, useCallback, memo, useMemo, useRef } from 'react';
+import { Settings, AlertCircle, CheckCircle, Calendar, Users, TrendingUp, RefreshCw, X, Plus, Info, Moon, Sun, Clock, Layout, Plane, BarChart2, Trash2, Edit3, Briefcase, Download, Upload, FileText, Save, List, ShieldAlert, Phone, MessageSquare, FileQuestion, Monitor, Award, PieChart, Copy, ChevronRight, Menu, Zap, Search, Filter, ZoomIn, ZoomOut, Loader2, AlertTriangle, Check, AlertOctagon, ArrowRight, Shuffle, Activity, History, PlayCircle, RotateCcw, Lock, Languages, Split, Globe, Calculator } from 'lucide-react';
 
 // --- CONSTANTS ---
 const ALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -8,10 +8,10 @@ const TASK_TYPES = ['Calls', 'Chats', 'Tickets', 'Admin', 'Training'];
 const COLOR_OPTIONS = ['orange', 'blue', 'slate', 'emerald', 'rose', 'purple', 'cyan'];
 const YEAR_OPTIONS = Array.from({length: 5}, (_, i) => new Date().getFullYear() + i);
 
-// --- STORAGE KEYS ---
-const CONFIG_KEY = 'tradeling_config_v63';
-const AGENTS_KEY = 'tradeling_agents_v63';
-const SCHEDULE_PREFIX = 'tradeling_schedule_v63_';
+// --- STORAGE KEYS (v107: Fixed PTO & Completeness) ---
+const CONFIG_KEY = 'tradeling_config_v107';
+const AGENTS_KEY = 'tradeling_agents_v107';
+const SCHEDULE_PREFIX = 'tradeling_schedule_v107_';
 
 const DEFAULT_SHIFTS = [
     { id: 'am', name: 'Morning', start: '09:00', end: '18:00', color: 'orange' },
@@ -22,7 +22,8 @@ const DEFAULT_CONFIG = {
     projectStartDate: new Date().toISOString().split('T')[0], 
     scheduleBuildCutoff: 20,
     maxConsecutiveDays: 5,
-    generationScope: 'full', // 'full', 'half_1', 'half_2'
+    splitDate: 15,
+    generationScope: 'full', 
     shifts: DEFAULT_SHIFTS,
     rules: ALL_DAYS.reduce((acc, day) => {
         const isWeekend = day === 'Saturday' || day === 'Sunday';
@@ -36,28 +37,29 @@ const DEFAULT_CONFIG = {
 };
 
 const DEFAULT_AGENTS = [
-    { name: 'John Smith', shiftId: 'am', preferredDaysOff1: ['Saturday', 'Sunday'], preferredDaysOff2: ['Friday', 'Saturday'], pto: [], errors: {} },
-    { name: 'Sarah Johnson', shiftId: 'am', preferredDaysOff1: ['Saturday', 'Sunday'], preferredDaysOff2: ['Sunday', 'Monday'], pto: [], errors: {} },
-    { name: 'Mike Davis', shiftId: 'pm', preferredDaysOff1: ['Friday', 'Saturday'], preferredDaysOff2: ['Thursday', 'Friday'], pto: [], errors: {} },
-    { name: 'Emily Chen', shiftId: 'any', preferredDaysOff1: ['Sunday', 'Monday'], preferredDaysOff2: ['Saturday', 'Sunday'], pto: [], errors: {} }, 
-    { name: 'David Brown', shiftId: 'pm', preferredDaysOff1: ['Monday', 'Tuesday'], preferredDaysOff2: ['Sunday', 'Monday'], pto: [], errors: {} },
-    { name: 'Alex Wilson', shiftId: 'am', preferredDaysOff1: ['Wednesday', 'Thursday'], preferredDaysOff2: ['Tuesday', 'Wednesday'], pto: [], errors: {} },
-    { name: 'Lisa Ray', shiftId: 'pm', preferredDaysOff1: ['Tuesday', 'Wednesday'], preferredDaysOff2: ['Wednesday', 'Thursday'], pto: [], errors: {} },
-    { name: 'Tom Hiddleston', shiftId: 'any', preferredDaysOff1: ['Thursday', 'Friday'], preferredDaysOff2: ['Friday', 'Saturday'], pto: [], errors: {} },
-    { name: 'Chris Evans', shiftId: 'am', preferredDaysOff1: ['Saturday', 'Sunday'], preferredDaysOff2: ['Friday', 'Saturday'], pto: [], errors: {} },
-    { name: 'Scarlett Jo', shiftId: 'pm', preferredDaysOff1: ['Sunday', 'Monday'], preferredDaysOff2: ['Saturday', 'Sunday'], pto: [], errors: {} },
-    { name: 'Mark Ruffalo', shiftId: 'am', preferredDaysOff1: ['Friday', 'Saturday'], preferredDaysOff2: ['Thursday', 'Friday'], pto: [], errors: {} },
-    { name: 'Jeremy Renner', shiftId: 'pm', preferredDaysOff1: ['Monday', 'Tuesday'], preferredDaysOff2: ['Tuesday', 'Wednesday'], pto: [], errors: {} },
-    { name: 'Paul Rudd', shiftId: 'any', preferredDaysOff1: ['Wednesday', 'Thursday'], preferredDaysOff2: ['Thursday', 'Friday'], pto: [], errors: {} }
+    { name: 'Sarah Johnson', shiftId: 'any', isBilingual: true, preferredDaysOff1: ['Saturday', 'Sunday'], preferredDaysOff2: ['Friday', 'Saturday'], pto: [], errors: {} },
+    { name: 'Chris Evans', shiftId: 'any', isBilingual: true, preferredDaysOff1: ['Monday', 'Tuesday'], preferredDaysOff2: ['Sunday', 'Monday'], pto: [], errors: {} },
+    { name: 'Jeremy Renner', shiftId: 'any', isBilingual: true, preferredDaysOff1: ['Wednesday', 'Thursday'], preferredDaysOff2: ['Tuesday', 'Wednesday'], pto: [], errors: {} },
+    { name: 'Paul Rudd', shiftId: 'any', isBilingual: true, preferredDaysOff1: ['Friday', 'Saturday'], preferredDaysOff2: ['Thursday', 'Friday'], pto: [], errors: {} },
+    { name: 'John Smith', shiftId: 'am', isBilingual: false, preferredDaysOff1: ['Saturday', 'Sunday'], preferredDaysOff2: ['Friday', 'Saturday'], pto: [], errors: {} },
+    { name: 'Mike Davis', shiftId: 'pm', isBilingual: false, preferredDaysOff1: ['Friday', 'Saturday'], preferredDaysOff2: ['Thursday', 'Friday'], pto: [], errors: {} },
+    { name: 'Emily Chen', shiftId: 'any', isBilingual: false, preferredDaysOff1: ['Sunday', 'Monday'], preferredDaysOff2: ['Saturday', 'Sunday'], pto: [], errors: {} },
+    { name: 'David Brown', shiftId: 'pm', isBilingual: false, preferredDaysOff1: ['Monday', 'Tuesday'], preferredDaysOff2: ['Sunday', 'Monday'], pto: [], errors: {} },
+    { name: 'Alex Wilson', shiftId: 'am', isBilingual: false, preferredDaysOff1: ['Wednesday', 'Thursday'], preferredDaysOff2: ['Tuesday', 'Wednesday'], pto: [], errors: {} },
+    { name: 'Lisa Ray', shiftId: 'pm', isBilingual: false, preferredDaysOff1: ['Tuesday', 'Wednesday'], preferredDaysOff2: ['Wednesday', 'Thursday'], pto: [], errors: {} },
+    { name: 'Tom Hiddleston', shiftId: 'any', isBilingual: false, preferredDaysOff1: ['Thursday', 'Friday'], preferredDaysOff2: ['Friday', 'Saturday'], pto: [], errors: {} },
+    { name: 'Agent 12', shiftId: 'pm', isBilingual: false, preferredDaysOff1: ['Sunday', 'Monday'], preferredDaysOff2: ['Saturday', 'Sunday'], pto: [], errors: {} },
+    { name: 'Agent 13', shiftId: 'am', isBilingual: false, preferredDaysOff1: ['Friday', 'Saturday'], preferredDaysOff2: ['Thursday', 'Friday'], pto: [], errors: {} }
 ];
 
-// --- SAFETY UTILS ---
+// --- UTILS ---
 const repairConfig = (loadedConfig) => {
     try {
         const safe = { ...DEFAULT_CONFIG, ...loadedConfig };
         if (!Array.isArray(safe.shifts)) safe.shifts = DEFAULT_SHIFTS;
         if (!safe.rules) safe.rules = {};
         if (!safe.generationScope) safe.generationScope = 'full';
+        if (!safe.splitDate || safe.splitDate < 1 || safe.splitDate > 28) safe.splitDate = 15;
         ALL_DAYS.forEach(day => {
             if (!safe.rules[day]) safe.rules[day] = {};
             safe.shifts.forEach(shift => {
@@ -74,6 +76,7 @@ const repairAgents = (loadedAgents) => {
     return loadedAgents.map(a => ({
         ...a,
         pto: Array.isArray(a.pto) ? a.pto : [],
+        isBilingual: typeof a.isBilingual === 'boolean' ? a.isBilingual : false, 
         preferredDaysOff1: Array.isArray(a.preferredDaysOff1) ? a.preferredDaysOff1 : ['Saturday', 'Sunday'],
         preferredDaysOff2: Array.isArray(a.preferredDaysOff2) ? a.preferredDaysOff2 : ['Friday', 'Saturday'],
         errors: a.errors || {}
@@ -93,7 +96,6 @@ const getLegendColor = (color) => {
     return map[color] || 'bg-slate-500';
 };
 
-// --- HOOKS ---
 function useDebounce(value, delay) {
   const [debouncedValue, setDebouncedValue] = useState(value);
   useEffect(() => {
@@ -122,7 +124,7 @@ function useTheme() {
     return { isDarkMode, toggleTheme };
 }
 
-// --- STYLED COMPONENTS ---
+// --- COMPONENTS ---
 const GlassCard = ({ children, className = "", isDarkMode = true }) => (
     <div className={`backdrop-blur-xl border shadow-2xl rounded-2xl transition-all duration-300 ${isDarkMode ? 'bg-slate-900/60 border-white/10' : 'bg-white/70 border-slate-200/60 shadow-xl'} ${className}`}>
         {children}
@@ -160,13 +162,11 @@ const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, type = 'dan
     );
 };
 
-// --- ERROR BOUNDARY ---
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { hasError: false }; }
   static getDerivedStateFromError(error) { return { hasError: true }; }
   componentDidCatch(error, errorInfo) { 
       console.error("Scheduler Crashed:", error, errorInfo); 
-      localStorage.clear();
   }
   handleReset = () => { localStorage.clear(); window.location.reload(); };
   render() {
@@ -186,10 +186,99 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// --- SUB-COMPONENT: AGENT CARD ---
-const AgentCard = memo(({ agent, index, shifts, updateAgent, updateAgentPreferredDays, onDeleteClick, setPtoModalAgentIndex, isDarkMode }) => {
+const CapacityCalculator = ({ agents, config, isDarkMode }) => {
+    let totalSlotsNeeded = 0;
+    let arabicSlotsNeeded = 0;
+
+    ALL_DAYS.forEach(day => {
+        config.shifts.forEach(shift => {
+            const req = config.rules?.[day]?.[shift.id]?.minStaff || 0;
+            totalSlotsNeeded += req;
+            arabicSlotsNeeded += 1; 
+        });
+    });
+
+    const totalWeeklyCapacity = agents.length * 5; 
+    const arabicAgentsCount = agents.filter(a => a.isBilingual).length;
+    const arabicWeeklyCapacity = arabicAgentsCount * 5;
+
+    const staffSurplus = totalWeeklyCapacity - totalSlotsNeeded;
+    const arabicSurplus = arabicWeeklyCapacity - arabicSlotsNeeded;
+
+    const isStaffHealthy = staffSurplus >= 0;
+    const isArabicHealthy = arabicSurplus >= 0;
+
+    const cardClass = isDarkMode ? "bg-slate-900/50 border-white/5" : "bg-white border-slate-200";
+    const textClass = isDarkMode ? "text-slate-400" : "text-slate-600";
+
+    const getStatusColor = (surplus) => {
+        if (surplus >= 5) return "text-emerald-500";
+        if (surplus >= 0) return "text-yellow-500";
+        return "text-red-500";
+    };
+
+    return (
+        <div className={`mt-8 p-6 rounded-2xl border ${cardClass}`}>
+            <h4 className="text-sm font-bold uppercase tracking-widest mb-6 flex items-center gap-2 text-blue-500">
+                <Calculator className="w-4 h-4" /> Capacity Analysis
+            </h4>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="relative">
+                    <div className="flex justify-between items-end mb-2">
+                        <span className={`text-xs font-bold uppercase ${textClass}`}>Skill Health (Arabic)</span>
+                        <span className={`text-xl font-black ${getStatusColor(arabicSurplus)}`}>
+                            {arabicSurplus >= 0 ? "+" : ""}{arabicSurplus} Slots
+                        </span>
+                    </div>
+                    <div className="w-full bg-slate-700/30 rounded-full h-2 overflow-hidden mb-2">
+                         <div className={`h-full rounded-full ${arabicSurplus >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`} style={{ width: `${Math.min((arabicWeeklyCapacity / arabicSlotsNeeded) * 100, 100)}%` }}></div>
+                    </div>
+                    <div className="flex justify-between text-[10px] font-mono opacity-70 mb-3">
+                        <span>Need: {arabicSlotsNeeded}/wk</span>
+                        <span>Have: {arabicWeeklyCapacity}/wk</span>
+                    </div>
+                    {!isArabicHealthy && (
+                        <div className="bg-red-500/10 text-red-500 p-3 rounded-lg text-xs font-bold flex items-start gap-2">
+                            <AlertTriangle className="w-4 h-4 shrink-0" />
+                            <div>Critical Shortage! You need {Math.abs(arabicSurplus)} more Arabic shifts per week.</div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="relative">
+                    <div className="flex justify-between items-end mb-2">
+                        <span className={`text-xs font-bold uppercase ${textClass}`}>Total Staffing Health</span>
+                        <span className={`text-xl font-black ${getStatusColor(staffSurplus)}`}>
+                            {staffSurplus >= 0 ? "+" : ""}{staffSurplus} Shifts
+                        </span>
+                    </div>
+                    <div className="w-full bg-slate-700/30 rounded-full h-2 overflow-hidden mb-2">
+                         <div className={`h-full rounded-full ${staffSurplus >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`} style={{ width: `${Math.min((totalWeeklyCapacity / totalSlotsNeeded) * 100, 100)}%` }}></div>
+                    </div>
+                    <div className="flex justify-between text-[10px] font-mono opacity-70 mb-3">
+                        <span>Need: {totalSlotsNeeded}/wk</span>
+                        <span>Have: {totalWeeklyCapacity}/wk</span>
+                    </div>
+                    {!isStaffHealthy && (
+                        <div className="bg-red-500/10 text-red-500 p-3 rounded-lg text-xs font-bold flex items-start gap-2">
+                            <AlertTriangle className="w-4 h-4 shrink-0" />
+                            <div>Short Staffed! You are missing {Math.abs(staffSurplus)} shifts.</div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+// --- AGENT CARD ---
+const AgentCard = ({ agent, index, shifts, updateAgent, updateAgentPreferredDays, onDeleteClick, setPtoModalAgentIndex, isDarkMode, isHidden }) => {
+  if (isHidden) return null; 
+
   const safeShifts = Array.isArray(shifts) ? shifts : [];
-  const currentShiftId = agent.shiftId || 'am';
+  const currentShiftId = agent.shiftId || 'any'; 
   const pref1 = agent.preferredDaysOff1 || ['Saturday', 'Sunday'];
   const pref2 = agent.preferredDaysOff2 || ['Friday', 'Saturday'];
 
@@ -201,7 +290,9 @@ const AgentCard = memo(({ agent, index, shifts, updateAgent, updateAgentPreferre
   return (
     <div className={`${cardBg} border hover:border-orange-500/50 p-4 rounded-xl transition-all duration-300 group relative backdrop-blur-md shadow-sm`}>
       {agent.missedOffDayStreak >= 2 && <div className="absolute top-0 right-0 bg-orange-500 text-white text-[9px] font-bold px-3 py-1 rounded-bl-xl shadow-lg flex items-center gap-1 animate-pulse"><ShieldAlert className="w-3 h-3" /> PRIORITY</div>}
-      <div className="flex gap-3 mb-4 items-end">
+      
+      {/* HEADER: NAME & SHIFT */}
+      <div className="flex gap-3 mb-3 items-end">
         <div className="flex-1">
             <label className={`text-[10px] uppercase font-bold mb-1.5 block tracking-wider ${labelColor}`}>Agent Name</label>
             <div className="relative">
@@ -218,17 +309,34 @@ const AgentCard = memo(({ agent, index, shifts, updateAgent, updateAgentPreferre
                 <div className="absolute right-2 top-2.5 pointer-events-none text-slate-500"><ChevronRight className="w-4 h-4 rotate-90" /></div>
             </div>
         </div>
-        <div className="flex gap-1"><button onClick={() => setPtoModalAgentIndex(index)} className={`h-[38px] px-3 rounded-lg text-xs font-bold flex items-center justify-center transition border border-transparent ${btnBg}`} title="Manage PTO"><Plane className="w-4 h-4" /> {agent.pto?.length > 0 && <span className="ml-1">{agent.pto.length}</span>}</button><button onClick={() => onDeleteClick(index)} className={`h-[38px] px-3 border border-transparent hover:text-white hover:bg-red-500/80 rounded-lg transition ${btnBg}`}><Trash2 className="w-4 h-4" /></button></div>
       </div>
+
+      {/* TOOLBAR: SKILL & PTO */}
+      <div className="flex justify-between items-center mb-3 px-1">
+          <button 
+            onClick={() => updateAgent(index, 'isBilingual', !agent.isBilingual)}
+            className={`flex items-center gap-2 text-[10px] font-bold px-3 py-1.5 rounded-lg transition border ${agent.isBilingual ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : isDarkMode ? 'bg-slate-900 text-slate-500 border-white/5 hover:border-emerald-500/50 hover:text-emerald-500' : 'bg-white text-slate-400 border-slate-200 hover:border-emerald-500/50 hover:text-emerald-500'}`}
+          >
+            {agent.isBilingual ? <Check className="w-3 h-3" /> : <Languages className="w-3 h-3" />}
+            {agent.isBilingual ? "Arabic / Bilingual" : "Add Language"}
+          </button>
+
+          <div className="flex gap-1">
+            <button onClick={() => setPtoModalAgentIndex(index)} className={`h-[28px] px-2 rounded-lg text-xs font-bold flex items-center justify-center transition border border-transparent ${btnBg}`} title="Manage PTO"><Plane className="w-3 h-3" /> {agent.pto?.length > 0 && <span className="ml-1">{agent.pto.length}</span>}</button>
+            <button onClick={() => onDeleteClick(index)} className={`h-[28px] px-2 border border-transparent hover:text-white hover:bg-red-500/80 rounded-lg transition ${btnBg}`}><Trash2 className="w-3 h-3" /></button>
+          </div>
+      </div>
+
+      {/* PREFERENCES */}
       <div className={`grid grid-cols-2 gap-3 p-3 rounded-lg border mt-2 ${isDarkMode ? 'bg-slate-950/30 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
         <div><label className="text-[9px] text-emerald-500 font-bold mb-1.5 flex items-center gap-1 uppercase"><CheckCircle className="w-3 h-3" /> Target Off</label><div className="flex gap-1"><select value={pref1[0]} onChange={(e) => updateAgentPreferredDays(index, 1, 0, e.target.value)} className={`w-full rounded px-1 py-1.5 text-xs focus:border-orange-500 outline-none transition border ${inputBg}`}>{ALL_DAYS.map(d => <option key={d} value={d}>{d.substring(0,3)}</option>)}</select><select value={pref1[1]} onChange={(e) => updateAgentPreferredDays(index, 1, 1, e.target.value)} className={`w-full rounded px-1 py-1.5 text-xs focus:border-orange-500 outline-none transition border ${inputBg}`}>{ALL_DAYS.map(d => <option key={d} value={d}>{d.substring(0,3)}</option>)}</select></div></div>
         <div><label className="text-[9px] text-blue-500 font-bold mb-1.5 flex items-center gap-1 uppercase"><Info className="w-3 h-3" /> Backup</label><div className="flex gap-1"><select value={pref2[0]} onChange={(e) => updateAgentPreferredDays(index, 2, 0, e.target.value)} className={`w-full rounded px-1 py-1.5 text-xs focus:border-blue-500 outline-none transition border ${inputBg}`}>{ALL_DAYS.map(d => <option key={d} value={d}>{d.substring(0,3)}</option>)}</select><select value={pref2[1]} onChange={(e) => updateAgentPreferredDays(index, 2, 1, e.target.value)} className={`w-full rounded px-1 py-1.5 text-xs focus:border-blue-500 outline-none transition border ${inputBg}`}>{ALL_DAYS.map(d => <option key={d} value={d}>{d.substring(0,3)}</option>)}</select></div></div>
       </div>
     </div>
   );
-});
+};
 
-// --- SUB-COMPONENT: SCHEDULE CELL ---
+// --- SCHEDULE CELL ---
 const ScheduleCell = memo(({ agentName, assignment, date, dayIndex, onClick, config, isDarkMode, isLocked }) => {
     let style = isDarkMode ? "bg-slate-800 text-slate-500 border-slate-700" : "bg-slate-100 text-slate-400 border-slate-200"; 
     let text = "OFF"; let icon = null; let subText = null;
@@ -255,7 +363,7 @@ const ScheduleCell = memo(({ agentName, assignment, date, dayIndex, onClick, con
     );
 });
 
-// --- SUB-COMPONENT: SCHEDULE TABLE ---
+// --- SCHEDULE TABLE ---
 const ScheduleTable = memo(({ schedule, visibleAgents, config, isDarkMode, zoomLevel, setZoomLevel, onCellClick, onDayClick, searchTerm, setSearchTerm, shiftFilter, setShiftFilter }) => {
     if (!schedule) return null;
 
@@ -272,7 +380,6 @@ const ScheduleTable = memo(({ schedule, visibleAgents, config, isDarkMode, zoomL
                 <h3 className={`text-xl font-bold flex items-center gap-3 uppercase tracking-wider ${isDarkMode ? 'text-white' : 'text-slate-900'}`}><TrendingUp className="w-6 h-6 text-orange-500" /> Master Schedule</h3>
                 
                 <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
-                    {/* Search in Table Header */}
                     <div className="relative group flex-1 md:flex-none">
                         <Search className={`absolute left-2 top-2 w-3 h-3 transition ${isDarkMode ? 'text-slate-500 group-focus-within:text-orange-500' : 'text-slate-400 group-focus-within:text-orange-500'}`} />
                         <input 
@@ -284,7 +391,6 @@ const ScheduleTable = memo(({ schedule, visibleAgents, config, isDarkMode, zoomL
                         />
                     </div>
 
-                    {/* Filter in Table Header */}
                     <div className="relative flex-1 md:flex-none">
                         <Filter className={`absolute left-2 top-2 w-3 h-3 pointer-events-none ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`} />
                         <select 
@@ -315,7 +421,19 @@ const ScheduleTable = memo(({ schedule, visibleAgents, config, isDarkMode, zoomL
                     <thead>
                         <tr className={`sticky top-0 z-20 border-b ${isDarkMode ? 'bg-slate-950/80 border-white/10' : 'bg-white/95 border-slate-200'}`}>
                             <th className={`p-5 min-w-[120px] sticky left-0 z-30 font-black uppercase tracking-[0.1em] text-[10px] ${isDarkMode ? 'bg-slate-950 text-slate-500' : 'bg-white text-slate-400'}`}>Date</th>
-                            {visibleAgents.map((agent, i) => (<th key={i} className={`p-5 min-w-[140px] text-[10px] font-black uppercase tracking-[0.1em] border-l ${isDarkMode ? 'text-slate-300 border-white/5' : 'text-slate-700 border-slate-200'}`}>{agent.name}</th>))}
+                            {visibleAgents.map((agent, i) => (
+                                <th key={i} className={`p-5 min-w-[140px] text-[10px] font-black uppercase tracking-[0.1em] border-l relative group overflow-hidden ${
+                                    agent.isBilingual 
+                                        ? (isDarkMode ? 'bg-emerald-900/20 text-emerald-400 border-emerald-500/30' : 'bg-emerald-50 text-emerald-800 border-emerald-200') 
+                                        : (isDarkMode ? 'text-slate-300 border-white/5' : 'text-slate-700 border-slate-200')
+                                }`}>
+                                    {agent.isBilingual && <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500"></div>}
+                                    <div className="flex flex-col gap-1">
+                                        <span className="flex items-center gap-2">{agent.name}</span>
+                                        {agent.isBilingual && <span className={`text-[9px] px-2 py-0.5 rounded w-fit font-bold ${isDarkMode ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700'}`}>🇦🇪 ARABIC</span>}
+                                    </div>
+                                </th>
+                            ))}
                             <th className={`p-5 min-w-[120px] font-black uppercase tracking-[0.1em] text-[10px] border-l text-center ${isDarkMode ? 'text-slate-500 border-white/5' : 'text-slate-400 border-slate-200'}`}>Coverage</th>
                         </tr>
                     </thead>
@@ -346,11 +464,17 @@ const ScheduleTable = memo(({ schedule, visibleAgents, config, isDarkMode, zoomL
                                          const req = getSafeStats(day, shift.id);
                                          const percent = req > 0 ? Math.min((count / req) * 100, 100) : 0;
                                          const isLow = count < req;
+                                         const bilingualCount = day.bilingualCoverage[shift.id] || 0;
+                                         const isBilingualLow = bilingualCount < 1; 
+
                                          return (
                                              <div key={shift.id} className="w-full">
                                                  <div className="flex justify-between items-center text-[9px] font-bold uppercase tracking-wider mb-1">
                                                      <span className="text-slate-500">{shift.name}</span>
-                                                     <span className={`${isLow ? "text-red-500" : "text-emerald-500"}`}>{count}/{req}</span>
+                                                     <div className="flex gap-2">
+                                                         {isBilingualLow && <span title="No Arabic Speaker!" className="text-red-500 flex items-center gap-0.5"><AlertCircle className="w-2.5 h-2.5"/></span>}
+                                                         <span className={`${isLow ? "text-red-500" : "text-emerald-500"}`}>{count}/{req}</span>
+                                                     </div>
                                                  </div>
                                                  <div className={`h-1.5 w-full rounded-full overflow-hidden ${isDarkMode ? 'bg-slate-800' : 'bg-slate-200'}`}>
                                                      <div className={`h-full ${isLow ? 'bg-red-500' : 'bg-emerald-500'}`} style={{width: `${percent}%`}}></div>
@@ -394,7 +518,8 @@ const WorkforceSchedulerContent = () => {
   const [saveStatus, setSaveStatus] = useState('saved');
   const [transitionModalOpen, setTransitionModalOpen] = useState(false);
   const [transitionData, setTransitionData] = useState(null);
-  const [midMonthTransition, setMidMonthTransition] = useState(false); // New flag for mid-month trigger
+  const [midMonthTransition, setMidMonthTransition] = useState(false); 
+  const [loadingText, setLoadingText] = useState('Initializing...'); 
 
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -418,18 +543,24 @@ const WorkforceSchedulerContent = () => {
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   // --- AUTO-SAVE ---
+  const saveTimeoutRef = useRef(null);
+
   useEffect(() => {
-    setSaveStatus('unsaved');
-    const handler = setTimeout(() => {
-        setSaveStatus('saving');
-        localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
-        localStorage.setItem(AGENTS_KEY, JSON.stringify(agents));
-        setTimeout(() => setSaveStatus('saved'), 500);
-    }, 1000);
-    return () => clearTimeout(handler);
+      setSaveStatus('unsaved');
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      
+      saveTimeoutRef.current = setTimeout(() => {
+          setSaveStatus('saving');
+          localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+          localStorage.setItem(AGENTS_KEY, JSON.stringify(agents));
+          setTimeout(() => setSaveStatus('saved'), 500);
+      }, 1000); 
+
+      return () => {
+          if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      };
   }, [agents, config]);
 
-  // Load specific month schedule
   useEffect(() => {
       const key = `${SCHEDULE_PREFIX}${selectedYear}_${selectedMonth}`;
       const saved = localStorage.getItem(key);
@@ -489,6 +620,12 @@ const WorkforceSchedulerContent = () => {
       }, 'danger', isDarkMode);
   };
 
+  const addAgent = () => {
+      const newName = `Agent ${agents.length + 1}`;
+      setAgents(prev => [...prev, { name: newName, shiftId: 'any', isBilingual: false, preferredDaysOff1: ['Saturday', 'Sunday'], preferredDaysOff2: ['Friday', 'Saturday'], pto: [], errors: {} }]);
+      addToast("Agent added", "success");
+  };
+
   const addShift = () => {
       const newId = `shift_${Date.now()}`;
       const newShift = { id: newId, name: 'New Shift', start: '09:00', end: '17:00', color: 'emerald' };
@@ -539,16 +676,26 @@ const WorkforceSchedulerContent = () => {
       } catch (e) { return {}; }
   };
 
-  // --- PTO ---
+  // --- PTO (v107: Safe Index & Deep Clone) ---
   const togglePtoDay = (day, month, year) => {
-      if (ptoModalAgentIndex === null) return;
+      if (ptoModalAgentIndex === null || !agents[ptoModalAgentIndex]) return;
       const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      
       setAgents(prev => {
-          const updated = [...prev];
-          const agent = updated[ptoModalAgentIndex];
-          if (agent.pto.includes(dateKey)) agent.pto = agent.pto.filter(d => d !== dateKey);
-          else agent.pto = [...agent.pto, dateKey].sort();
-          return updated;
+          const newAgents = [...prev];
+          const agent = { ...newAgents[ptoModalAgentIndex] }; 
+          // Clone the PTO array to force update
+          let newPto = agent.pto ? [...agent.pto] : []; 
+          
+          if (newPto.includes(dateKey)) {
+              newPto = newPto.filter(d => d !== dateKey);
+          } else {
+              newPto.push(dateKey);
+              newPto.sort();
+          }
+          agent.pto = newPto;
+          newAgents[ptoModalAgentIndex] = agent;
+          return newAgents;
       });
   };
 
@@ -563,26 +710,23 @@ const WorkforceSchedulerContent = () => {
            newDates.push(d.toISOString().split('T')[0]);
       }
       setAgents(prev => {
-          const updated = [...prev];
-          const agent = updated[ptoModalAgentIndex];
-          agent.pto = [...new Set([...agent.pto, ...newDates])].sort();
-          return updated;
+          const newAgents = [...prev];
+          const agent = { ...newAgents[ptoModalAgentIndex] };
+          agent.pto = [...new Set([...(agent.pto || []), ...newDates])].sort();
+          newAgents[ptoModalAgentIndex] = agent;
+          return newAgents;
       });
       addToast("Range added", "success");
   };
 
   const removePto = (date) => {
       setAgents(prev => {
-          const updated = [...prev];
-          updated[ptoModalAgentIndex].pto = updated[ptoModalAgentIndex].pto.filter(d => d !== date);
-          return updated;
+          const newAgents = [...prev];
+          const agent = { ...newAgents[ptoModalAgentIndex] };
+          agent.pto = agent.pto.filter(d => d !== date);
+          newAgents[ptoModalAgentIndex] = agent;
+          return newAgents;
       });
-  };
-
-  const addAgent = () => {
-      const newName = `Agent ${agents.length + 1}`;
-      setAgents(prev => [...prev, { name: newName, shiftId: config.shifts[0].id, preferredDaysOff1: ['Saturday', 'Sunday'], preferredDaysOff2: ['Friday', 'Saturday'], pto: [], errors: {} }]);
-      addToast("Agent added", "success");
   };
 
   const handleExportBackup = () => {
@@ -631,7 +775,7 @@ const WorkforceSchedulerContent = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `schedule_v63_${MONTH_NAMES[selectedMonth]}.csv`;
+      link.download = `schedule_v107_${MONTH_NAMES[selectedMonth]}.csv`;
       link.click();
       addToast("CSV Exported", "success");
   };
@@ -667,7 +811,6 @@ const WorkforceSchedulerContent = () => {
 
   const getTransitionDays = (startFromMidMonth = false) => {
       if (!startFromMidMonth) {
-          // Standard: Get last 7 days of PREVIOUS month
           const prevMonth = new Date(selectedYear, selectedMonth - 1, 1);
           const lastDay = new Date(prevMonth.getFullYear(), prevMonth.getMonth() + 1, 0);
           const days = [];
@@ -678,10 +821,10 @@ const WorkforceSchedulerContent = () => {
           }
           return days;
       } else {
-          // Mid-Month: Get days 9-15 of CURRENT month
+          const split = config.splitDate || 15;
           const days = [];
-          for(let i=9; i<=15; i++) {
-              days.push(new Date(selectedYear, selectedMonth, i));
+          for(let i=split-6; i<=split; i++) {
+              if (i > 0) days.push(new Date(selectedYear, selectedMonth, i));
           }
           return days;
       }
@@ -696,344 +839,409 @@ const WorkforceSchedulerContent = () => {
   };
 
   const checkHistoryAndGenerate = () => {
-      const mode = config.generationScope; // 'full', 'half_1', 'half_2'
-
-      // If generating Phase 2, we need Phase 1 history
+      const mode = config.generationScope; 
+      const split = config.splitDate || 15;
+      
       if (mode === 'half_2') {
-          // Check if we have valid data for Day 15
-          if (schedule && schedule.length >= 15 && schedule[14]?.dateStr) {
-              // We have local data, use it (compute state automatically)
-              generateSchedule(null, true); // true = use existing schedule for state
+          if (schedule && schedule.length >= split && schedule[split-1]?.dateStr) {
+              generateSchedule(null, true); 
               return;
           } else {
-              // No local data for Phase 1. Force manual input for Days 9-15.
               setMidMonthTransition(true);
               const days = getTransitionDays(true);
               setTransitionData({
                   days: days.map(d => ({ date: d, str: d.toLocaleDateString('en-US', {weekday:'short', day:'numeric'}) })),
-                  values: agents.reduce((acc, a) => ({ ...acc, [a.name]: Array(7).fill(true) }), {}) 
+                  values: agents.reduce((acc, a) => ({ ...acc, [a.name]: Array(days.length).fill(true) }), {}) 
               });
               setTransitionModalOpen(true);
               return;
           }
       }
-
-      // Standard Month Start Logic
-      const projectStart = new Date(config.projectStartDate);
-      const currentStart = new Date(selectedYear, selectedMonth, 1);
       
-      if (currentStart <= projectStart) {
-          generateSchedule();
-          return;
-      }
-
       const prevDate = new Date(selectedYear, selectedMonth - 1, 1);
       const prevKey = `${SCHEDULE_PREFIX}${prevDate.getFullYear()}_${prevDate.getMonth()}`;
       const savedPrev = localStorage.getItem(prevKey);
-      
-      if(!savedPrev) {
-          setMidMonthTransition(false);
-          const days = getTransitionDays(false);
-          setTransitionData({ 
-              days: days.map(d => ({ date: d, str: d.toLocaleDateString('en-US', {weekday:'short', day:'numeric'}) })),
-              values: agents.reduce((acc, a) => ({ ...acc, [a.name]: Array(7).fill(true) }), {}) 
-          });
-          setTransitionModalOpen(true);
+
+      const projectStart = new Date(config.projectStartDate);
+      const currentStart = new Date(selectedYear, selectedMonth, 1);
+
+      if (!savedPrev && currentStart > projectStart) {
+           setMidMonthTransition(false);
+           const days = getTransitionDays(false);
+           setTransitionData({ 
+               days: days.map(d => ({ date: d, str: d.toLocaleDateString('en-US', {weekday:'short', day:'numeric'}) })),
+               values: agents.reduce((acc, a) => ({ ...acc, [a.name]: Array(7).fill(true) }), {}) 
+           });
+           setTransitionModalOpen(true);
       } else {
-          const parsed = JSON.parse(savedPrev);
-          generateSchedule(parsed.finalState);
+           if(savedPrev) {
+                const parsed = JSON.parse(savedPrev);
+                generateSchedule(parsed.finalState);
+           } else {
+                generateSchedule(); 
+           }
       }
   };
 
+  const openManualHistory = () => {
+      setMidMonthTransition(config.generationScope === 'half_2'); 
+      const days = getTransitionDays(config.generationScope === 'half_2');
+      setTransitionData({ 
+          days: days.map(d => ({ date: d, str: d.toLocaleDateString('en-US', {weekday:'short', day:'numeric'}) })),
+          values: agents.reduce((acc, a) => ({ ...acc, [a.name]: Array(days.length).fill(true) }), {}) 
+      });
+      setTransitionModalOpen(true);
+  };
+  
+  const handleSkipHistory = () => {
+      setTransitionModalOpen(false);
+      generateSchedule({}); 
+  };
+
   const handleTransitionSubmit = () => {
+      if(!transitionData) return;
       const computedState = {};
       agents.forEach(a => {
           const history = transitionData.values[a.name]; 
           let streak = 0;
-          for(let i=6; i>=0; i--) {
+          for(let i=history.length-1; i>=0; i--) {
               if(history[i]) streak++;
               else break;
           }
-          // Calculate weekly load
-          let weekly = 0;
-          if (midMonthTransition) {
-             // For mid-month, count from most recent Monday in the 9-15 range
-             let mondayIndex = -1;
-             transitionData.days.forEach((d, idx) => { if(d.date.getDay() === 1) mondayIndex = idx; });
-             if (mondayIndex !== -1) {
-                 for(let i=mondayIndex; i<7; i++) if(history[i]) weekly++;
-             } else {
-                 weekly = history.filter(Boolean).length; // Fallback
-             }
-          } else {
-             weekly = history.filter(Boolean).length; 
-          }
+          let weekly = history.filter(Boolean).length;
           computedState[a.name] = { consecutive: streak, weekly };
       });
       setTransitionModalOpen(false);
       generateSchedule(computedState);
   };
 
+  // --- MAIN GENERATION ENGINE (v107: Safe Mode) ---
   const generateSchedule = async (initialState = {}, useExistingSchedule = false) => {
     setProcessing(true);
     setWarnings([]);
-    setProgress(10);
+    setProgress(0);
+    setLoadingText('Initializing System...');
     
+    if (!useExistingSchedule && config.generationScope === 'half_2') {
+        setLoadingText('Skipping Phase 1 (History Mode)...');
+    }
+
     setTimeout(() => {
-      try {
-        const weeks = [];
-        const firstDay = new Date(selectedYear, selectedMonth, 1);
-        const lastDay = new Date(selectedYear, selectedMonth + 1, 0);
-        let current = new Date(firstDay);
-        const startOffset = (current.getDay() + 6) % 7;
-        current.setDate(current.getDate() - startOffset);
-        const end = new Date(lastDay);
-        end.setDate(end.getDate() + ((7 - lastDay.getDay()) % 7));
+        setProgress(20);
+        setLoadingText('Analyzing Staff Availability & PTO...');
+    }, 400);
 
-        while (current <= end) {
-            const week = [];
-            for(let i=0; i<7; i++) {
-                week.push(new Date(current));
-                current.setDate(current.getDate() + 1);
+    setTimeout(() => {
+        setProgress(50);
+        setLoadingText('Locking Arabic Shifts...');
+    }, 1200);
+
+    setTimeout(() => {
+        setProgress(80);
+        setLoadingText('Balancing Volume & Coverage...');
+    }, 2000);
+
+    setTimeout(() => {
+        setLoadingText('Finalizing Schedule...');
+        
+        try {
+            const weeks = [];
+            const firstDay = new Date(selectedYear, selectedMonth, 1);
+            const lastDay = new Date(selectedYear, selectedMonth + 1, 0);
+            let current = new Date(firstDay);
+            const startOffset = (current.getDay() + 6) % 7;
+            current.setDate(current.getDate() - startOffset);
+            const end = new Date(lastDay);
+            end.setDate(end.getDate() + ((7 - lastDay.getDay()) % 7));
+
+            while (current <= end) {
+                const week = [];
+                for(let i=0; i<7; i++) {
+                    week.push(new Date(current));
+                    current.setDate(current.getDate() + 1);
+                }
+                weeks.push(week);
             }
-            weeks.push(week);
-        }
-        setProgress(30);
 
-        const scheduleData = [];
-        const newWarnings = [];
-        const agentWeeklyWork = {}; 
-        const agentConsecutiveDays = {};
-        
-        // Initialize State
-        if (useExistingSchedule && schedule) {
-            // Re-hydrate from existing Day 15 state
-            // Logic: Scan 1-15, calc stats, continue
-            // Simplification: We will just run the logic from scratch for 1-15 to rebuild state, but KEEP the assignments if locked
-        } 
-        
-        agents.forEach(a => {
-            if(initialState && initialState[a.name]) {
-                agentConsecutiveDays[a.name] = initialState[a.name].consecutive || 0;
-                agentWeeklyWork[a.name] = initialState[a.name].weekly || 0; 
+            const scheduleData = [];
+            const newWarnings = [];
+            const agentWeeklyWork = {}; 
+            const agentConsecutiveDays = {};
+            const splitDay = config.splitDate || 15;
+            
+            const lockedShifts = {};
+            const forcedOffDays = {}; 
+            
+            const bilingualAgents = agents.filter(a => a.isBilingual);
+            
+            bilingualAgents.forEach((agent, index) => {
+                const splitIndex = Math.ceil(bilingualAgents.length / 2);
+                if (index < splitIndex) lockedShifts[agent.name] = 'am';
+                else lockedShifts[agent.name] = 'pm';
+
+                let days = [];
+                const patternIndex = index % 4;
+                if (patternIndex === 0) days = ['Saturday', 'Sunday'];
+                else if (patternIndex === 1) days = ['Monday', 'Tuesday'];
+                else if (patternIndex === 2) days = ['Wednesday', 'Thursday'];
+                else days = ['Friday', 'Saturday']; 
+
+                forcedOffDays[agent.name] = days;
+            });
+
+            const stdAgents = agents.filter(a => !a.isBilingual);
+            let totalAM = Object.values(lockedShifts).filter(s => s === 'am').length;
+            let totalPM = Object.values(lockedShifts).filter(s => s === 'pm').length;
+
+            stdAgents.forEach(agent => {
+                if (agent.shiftId !== 'any') {
+                    lockedShifts[agent.name] = agent.shiftId;
+                    if (agent.shiftId === 'am') totalAM++; else totalPM++;
+                } else {
+                    if (totalAM <= totalPM) { lockedShifts[agent.name] = 'am'; totalAM++; }
+                    else { lockedShifts[agent.name] = 'pm'; totalPM++; }
+                }
+            });
+
+            if (useExistingSchedule && schedule) {
+                const existingLimit = Math.min(schedule.length, splitDay);
+                for(let i=0; i<existingLimit; i++) {
+                    const existingDay = schedule[i];
+                    scheduleData.push({...existingDay, isLocked: true});
+                    Object.keys(existingDay.assignments).forEach(name => {
+                        const assign = existingDay.assignments[name];
+                        if (assign.status === 'WORKING') {
+                            agentWeeklyWork[name] = (agentWeeklyWork[name] || 0) + 1;
+                            agentConsecutiveDays[name] = (agentConsecutiveDays[name] || 0) + 1;
+                        } else {
+                            agentConsecutiveDays[name] = 0;
+                        }
+                    });
+                }
             } else {
-                agentConsecutiveDays[a.name] = 0;
-                agentWeeklyWork[a.name] = 0;
+                agents.forEach(a => {
+                    if(initialState && initialState[a.name]) {
+                        agentConsecutiveDays[a.name] = initialState[a.name].consecutive || 0;
+                        agentWeeklyWork[a.name] = initialState[a.name].weekly || 0; 
+                    } else {
+                        agentConsecutiveDays[a.name] = 0;
+                        agentWeeklyWork[a.name] = 0;
+                    }
+                });
             }
-        });
 
-        weeks.forEach((weekDates, wIdx) => {
-             // Reset weekly on Monday
-             if (weekDates[0].getDay() === 1) { // Logic fix: weekDates[0] is always Monday in our loop
-                 agents.forEach(a => agentWeeklyWork[a.name] = 0);
-             }
-
-             const weeklyOffs = {};
-             const currentDailyOffs = {}; 
-             const dayRequirements = {};  
-
-             // Pre-calc capacity
-             weekDates.forEach(date => {
-                 const dName = date.toLocaleDateString('en-US', { weekday: 'long' });
-                 const reqs = getReqs(date, config);
-                 let totalNeeded = 0;
-                 Object.values(reqs).forEach(r => totalNeeded += (r.minStaff || 0));
-                 dayRequirements[dName] = Math.max(0, agents.length - totalNeeded);
-                 currentDailyOffs[dName] = 0;
-             });
-
-             // Assign PTO
-             agents.forEach(agent => {
-                 const ptoDays = weekDates.filter(d => {
-                     const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-                     return agent.pto.includes(k);
-                 }).map(d => d.toLocaleDateString('en-US', { weekday: 'long' }));
-                 weeklyOffs[agent.name] = [...ptoDays];
-                 ptoDays.forEach(d => currentDailyOffs[d]++);
-             });
-
-             // Assign Preferred Offs (Capacity First)
-             const shuffledAgents = shuffleArray([...agents]);
-             shuffledAgents.forEach(agent => {
-                 if(weeklyOffs[agent.name].length >= 2) return; 
-                 const pref1 = agent.preferredDaysOff1;
-                 const canTake1 = pref1.every(d => (currentDailyOffs[d] || 0) < dayRequirements[d]);
-                 
-                 if(canTake1) {
-                     weeklyOffs[agent.name] = pref1;
-                     pref1.forEach(d => currentDailyOffs[d] = (currentDailyOffs[d] || 0) + 1);
-                     return;
+            weeks.forEach((weekDates, wIdx) => {
+                 if (weekDates[0].getDay() === 1) { 
+                     agents.forEach(a => agentWeeklyWork[a.name] = 0);
                  }
-                 const pref2 = agent.preferredDaysOff2;
-                 const canTake2 = pref2.every(d => (currentDailyOffs[d] || 0) < dayRequirements[d]);
-                 if(canTake2) {
-                     weeklyOffs[agent.name] = pref2;
-                     pref2.forEach(d => currentDailyOffs[d] = (currentDailyOffs[d] || 0) + 1);
-                     return;
-                 }
-                 const bestDays = ALL_DAYS.filter(d => !weeklyOffs[agent.name].includes(d))
-                     .sort((a,b) => {
-                         const slackA = (dayRequirements[a] || 0) - (currentDailyOffs[a] || 0);
-                         const slackB = (dayRequirements[b] || 0) - (currentDailyOffs[b] || 0);
-                         return slackB - slackA; 
-                     }).slice(0, 2 - weeklyOffs[agent.name].length);
 
-                 weeklyOffs[agent.name] = [...weeklyOffs[agent.name], ...bestDays];
-                 bestDays.forEach(d => currentDailyOffs[d] = (currentDailyOffs[d] || 0) + 1);
-             });
-
-             // Daily Fill
-             weekDates.forEach(date => {
-                 const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
-                 const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
-                 const dayNum = date.getDate();
-                 const isCurrentMonth = date.getMonth() === selectedMonth;
+                 const weeklyOffs = {};
+                 const currentDailyOffs = {}; 
                  
-                 // ** SCOPE LOGIC **
-                 let isLocked = false;
-                 let skipGeneration = false;
+                 weekDates.forEach(date => {
+                     const dName = date.toLocaleDateString('en-US', { weekday: 'long' });
+                     currentDailyOffs[dName] = 0;
+                 });
 
-                 if (config.generationScope === 'half_1' && dayNum > 15 && isCurrentMonth) skipGeneration = true;
-                 if (config.generationScope === 'half_2' && dayNum <= 15 && isCurrentMonth) isLocked = true;
+                 agents.forEach(agent => {
+                     const ptoDays = weekDates.filter(d => {
+                         const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                         return agent.pto.includes(k);
+                     }).map(d => d.toLocaleDateString('en-US', { weekday: 'long' }));
+                     weeklyOffs[agent.name] = [...ptoDays];
+                     ptoDays.forEach(d => currentDailyOffs[d]++);
+                 });
 
-                 // If Locked (Phase 1 during Phase 2 generation):
-                 // We must retrieve the EXISTING assignment to keep state consistent
-                 if (isLocked && schedule && schedule[scheduleData.length]) {
-                     const existingDay = schedule[scheduleData.length];
-                     scheduleData.push({...existingDay, isLocked: true});
+                 agents.forEach(agent => {
+                     if(weeklyOffs[agent.name].length >= 2) return; 
+
+                     if (agent.isBilingual && forcedOffDays[agent.name]) {
+                         weeklyOffs[agent.name] = forcedOffDays[agent.name];
+                         forcedOffDays[agent.name].forEach(d => currentDailyOffs[d] = (currentDailyOffs[d] || 0) + 1);
+                     } else {
+                         const pref1 = agent.preferredDaysOff1;
+                         weeklyOffs[agent.name] = pref1; 
+                     }
+                 });
+
+                 weekDates.forEach(date => {
+                     const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+                     const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+                     const dayNum = date.getDate();
+                     const isCurrentMonth = date.getMonth() === selectedMonth;
                      
-                     // Update counters based on existing data
-                     Object.keys(existingDay.assignments).forEach(name => {
-                         const assign = existingDay.assignments[name];
-                         if (assign.status === 'WORKING') {
-                             agentWeeklyWork[name]++;
-                             agentConsecutiveDays[name]++;
-                         } else {
-                             agentConsecutiveDays[name] = 0;
+                     let isLocked = false; 
+
+                     if (config.generationScope === 'half_2' && dayNum <= splitDay && isCurrentMonth) {
+                         if (!useExistingSchedule) {
+                             scheduleData.push({
+                                 date: dateStr,
+                                 day: dayName,
+                                 fullDate: date.toDateString(),
+                                 dateStr: dateStr,
+                                 assignments: {},
+                                 total: 0,
+                                 shiftCoverage: {},
+                                 bilingualCoverage: {},
+                                 bilingualStats: {},
+                                 isCurrentMonth,
+                                 monthName: date.toLocaleDateString('en-US', { month: 'short' }),
+                                 dayNum: String(date.getDate()).padStart(2, '0'),
+                                 hasShortage: false,
+                                 isLocked: true
+                             });
+                         }
+                         return;
+                     }
+                     
+                     if (config.generationScope === 'half_1' && dayNum > splitDay && isCurrentMonth) return; 
+
+                     if (!isCurrentMonth && config.generationRange !== 'full') return;
+
+                     const reqs = getReqs(date, config);
+                     const dailyAssigns = {};
+                     
+                     const available = agents.filter(a => !weeklyOffs[a.name].includes(dayName));
+                     const eligible = available.filter(a => 
+                         (agentWeeklyWork[a.name] || 0) < 5 && 
+                         (agentConsecutiveDays[a.name] || 0) < config.maxConsecutiveDays 
+                     );
+                     
+                     const dailyShifts = config.shifts.map(s => ({ ...s, tempGroup: [] }));
+
+                     eligible.forEach(agent => {
+                         let assignedShiftId = lockedShifts[agent.name];
+                         if (!assignedShiftId) assignedShiftId = 'am'; 
+                         const targetShift = dailyShifts.find(s => s.id === assignedShiftId);
+                         if(targetShift) targetShift.tempGroup.push(agent);
+                     });
+
+                     const amShift = dailyShifts.find(s => s.id === 'am');
+                     const pmShift = dailyShifts.find(s => s.id === 'pm');
+
+                     if (amShift && pmShift) {
+                         const amBilinguals = amShift.tempGroup.filter(a => a.isBilingual);
+                         const pmBilinguals = pmShift.tempGroup.filter(a => a.isBilingual);
+
+                         if (pmBilinguals.length === 0 && amBilinguals.length >= 2) {
+                             const mover = amBilinguals[0];
+                             amShift.tempGroup = amShift.tempGroup.filter(a => a.name !== mover.name);
+                             pmShift.tempGroup.push(mover);
+                         }
+                         else if (amBilinguals.length === 0 && pmBilinguals.length >= 2) {
+                             const mover = pmBilinguals[0];
+                             pmShift.tempGroup = pmShift.tempGroup.filter(a => a.name !== mover.name);
+                             amShift.tempGroup.push(mover);
+                         }
+                     }
+
+                     const shiftCounts = {};
+                     const bilingualCounts = {};
+                     let totalStaff = 0;
+                     
+                     dailyShifts.forEach(shift => {
+                         const sReq = reqs[shift.id] || { minStaff: 0 };
+                         const tasks = assignTasksForShift(shift.tempGroup, sReq);
+                         
+                         shift.tempGroup.forEach(a => {
+                             dailyAssigns[a.name] = { status: 'WORKING', shiftId: shift.id, task: tasks[a.name] };
+                             agentWeeklyWork[a.name] = (agentWeeklyWork[a.name] || 0) + 1;
+                             agentConsecutiveDays[a.name] = (agentConsecutiveDays[a.name] || 0) + 1;
+                         });
+                         
+                         const bilingualInShift = shift.tempGroup.filter(a => a.isBilingual).length;
+                         bilingualCounts[shift.id] = bilingualInShift;
+
+                         if(shift.tempGroup.length < sReq.minStaff) {
+                             newWarnings.push(`${dateStr} (${shift.name}): Short Staffed (${shift.tempGroup.length}/${sReq.minStaff})`);
+                         }
+                         if(bilingualInShift < 1) {
+                             newWarnings.push(`${dateStr} (${shift.name}): ⚠️ NO ARABIC SPEAKER`);
+                         }
+
+                         shiftCounts[shift.id] = shift.tempGroup.length;
+                         totalStaff += shift.tempGroup.length;
+                     });
+
+                     agents.forEach(a => {
+                         if(!dailyAssigns[a.name]) {
+                             const isPTO = weeklyOffs[a.name].includes(dayName) && a.pto.find(p => p.endsWith(String(date.getDate()).padStart(2,'0'))); 
+                             dailyAssigns[a.name] = { status: isPTO ? 'PTO' : 'OFF' };
+                             agentConsecutiveDays[a.name] = 0;
                          }
                      });
-                     return; // Skip generation logic for this day
-                 }
 
-                 if (skipGeneration || (!isCurrentMonth && config.generationRange !== 'full')) return;
+                     const hasShortage = config.shifts.some(s => {
+                         const req = getReqs(date, config)[s.id]?.minStaff || 0;
+                         return (shiftCounts[s.id] || 0) < req;
+                     });
 
-                 // ** REGULAR GENERATION LOGIC **
-                 const reqs = getReqs(date, config);
-                 const dailyAssigns = {};
-                 
-                 const available = agents.filter(a => !weeklyOffs[a.name].includes(dayName));
-                 const eligible = available.filter(a => agentWeeklyWork[a.name] < 5); // 5-Day Cap
-                 
-                 const fixedAgents = eligible.filter(a => a.shiftId !== 'any');
-                 const floaters = eligible.filter(a => a.shiftId === 'any');
-                 
-                 config.shifts.forEach(shift => {
-                     const sReq = reqs[shift.id] || { minStaff: 0 };
-                     shift.tempGroup = [];
-                     fixedAgents.forEach(a => {
-                         if(a.shiftId === shift.id && !dailyAssigns[a.name]) {
-                             shift.tempGroup.push(a);
-                             dailyAssigns[a.name] = true;
-                             agentWeeklyWork[a.name]++;
-                             agentConsecutiveDays[a.name]++;
-                         }
+                     const bilingualStats = {
+                         total: agents.filter(a => a.isBilingual).length,
+                         off: agents.filter(a => a.isBilingual && weeklyOffs[a.name].includes(dayName)).length,
+                         fatigued: available.filter(a => a.isBilingual && ((agentWeeklyWork[a.name] || 0) >= 5 || (agentConsecutiveDays[a.name] || 0) >= config.maxConsecutiveDays)).length,
+                         eligible: agents.filter(a => a.isBilingual && dailyAssigns[a.name]?.status === 'WORKING').length
+                     };
+
+                     scheduleData.push({
+                         date: dateStr,
+                         day: dayName,
+                         fullDate: date.toDateString(),
+                         dateStr: dateStr, 
+                         assignments: dailyAssigns,
+                         total: totalStaff,
+                         shiftCoverage: shiftCounts,
+                         bilingualCoverage: bilingualCounts, 
+                         bilingualStats, 
+                         isCurrentMonth,
+                         monthName: date.toLocaleDateString('en-US', { month: 'short' }),
+                         dayNum: String(date.getDate()).padStart(2, '0'),
+                         hasShortage,
+                         isLocked: isLocked 
                      });
                  });
+            });
 
-                 floaters.forEach(f => {
-                     let targetShift = config.shifts[0];
-                     let maxNeed = -999;
-                     config.shifts.forEach(s => {
-                         const req = reqs[s.id]?.minStaff || 1;
-                         const current = s.tempGroup.length;
-                         const needScore = (req - current) / req; 
-                         if(needScore > maxNeed) { maxNeed = needScore; targetShift = s; }
-                     });
-                     targetShift.tempGroup.push(f);
-                     dailyAssigns[f.name] = true;
-                     agentWeeklyWork[f.name]++;
-                     agentConsecutiveDays[f.name]++;
-                 });
+            const finalState = {};
+            agents.forEach(a => {
+                finalState[a.name] = {
+                    consecutive: agentConsecutiveDays[a.name] || 0,
+                    weekly: agentWeeklyWork[a.name] || 0
+                };
+            });
 
-                 const shiftCounts = {};
-                 let totalStaff = 0;
-                 
-                 config.shifts.forEach(shift => {
-                     const sReq = reqs[shift.id] || { minStaff: 0 };
-                     const tasks = assignTasksForShift(shift.tempGroup, sReq);
-                     shift.tempGroup.forEach(a => {
-                         dailyAssigns[a.name] = { status: 'WORKING', shiftId: shift.id, task: tasks[a.name] };
-                     });
-                     if(shift.tempGroup.length < sReq.minStaff) {
-                         newWarnings.push(`${dateStr} (${shift.name}): Short Staffed (${shift.tempGroup.length}/${sReq.minStaff})`);
-                     }
-                     shiftCounts[shift.id] = shift.tempGroup.length;
-                     totalStaff += shift.tempGroup.length;
-                 });
+            const totalDaysInMonth = scheduleData.filter(d => d.isCurrentMonth).length;
+            const criticalDaysCount = scheduleData.filter(d => d.isCurrentMonth && d.hasShortage).length;
+            const optimalDaysCount = totalDaysInMonth - criticalDaysCount;
+            const healthScore = totalDaysInMonth > 0 ? Math.round((optimalDaysCount / totalDaysInMonth) * 100) : 0;
 
-                 agents.forEach(a => {
-                     if(!dailyAssigns[a.name]) {
-                         const isPTO = weeklyOffs[a.name].includes(dayName) && a.pto.find(p => p.endsWith(String(date.getDate()).padStart(2,'0'))); 
-                         dailyAssigns[a.name] = { status: isPTO ? 'PTO' : 'OFF' };
-                         agentConsecutiveDays[a.name] = 0;
-                     }
-                 });
-
-                 const hasShortage = config.shifts.some(s => {
-                     const req = getReqs(date, config)[s.id]?.minStaff || 0;
-                     return (shiftCounts[s.id] || 0) < req;
-                 });
-
-                 scheduleData.push({
-                     date: dateStr,
-                     day: dayName,
-                     fullDate: date.toDateString(),
-                     dateStr: dateStr, 
-                     assignments: dailyAssigns,
-                     total: totalStaff,
-                     shiftCoverage: shiftCounts,
-                     isCurrentMonth,
-                     monthName: date.toLocaleDateString('en-US', { month: 'short' }),
-                     dayNum: String(date.getDate()).padStart(2, '0'),
-                     hasShortage,
-                     isLocked // For rendering
-                 });
-             });
-             setProgress(30 + Math.round((wIdx / weeks.length) * 60));
-        });
-
-        // Save State
-        const finalState = {};
-        agents.forEach(a => {
-            finalState[a.name] = {
-                consecutive: agentConsecutiveDays[a.name],
-                weekly: agentWeeklyWork[a.name]
+            const summaryData = {
+                healthScore,
+                totalDays: totalDaysInMonth * config.shifts.length,
+                optimalDays: optimalDaysCount,
+                criticalDays: criticalDaysCount
             };
-        });
 
-        const totalDaysInMonth = scheduleData.filter(d => d.isCurrentMonth).length;
-        const criticalDaysCount = scheduleData.filter(d => d.isCurrentMonth && d.hasShortage).length;
-        const optimalDaysCount = totalDaysInMonth - criticalDaysCount;
-        const healthScore = totalDaysInMonth > 0 ? Math.round((optimalDaysCount / totalDaysInMonth) * 100) : 0;
+            const key = `${SCHEDULE_PREFIX}${selectedYear}_${selectedMonth}`;
+            localStorage.setItem(key, JSON.stringify({ schedule: scheduleData, summary: summaryData, warnings: newWarnings, finalState }));
+            
+            setSchedule(scheduleData);
+            setWarnings(newWarnings);
+            setSummary(summaryData);
+            setProgress(100);
+            setLoadingText('Finalizing Schedule...');
+            
+            setTimeout(() => {
+                 setProcessing(false); 
+                 addToast("Schedule generated!", "success");
+            }, 500);
 
-        const summaryData = {
-            healthScore,
-            totalDays: totalDaysInMonth * config.shifts.length,
-            optimalDays: optimalDaysCount,
-            criticalDays: criticalDaysCount
-        };
-
-        const key = `${SCHEDULE_PREFIX}${selectedYear}_${selectedMonth}`;
-        localStorage.setItem(key, JSON.stringify({ schedule: scheduleData, summary: summaryData, warnings: newWarnings, finalState }));
-        
-        setSchedule(scheduleData);
-        setWarnings(newWarnings);
-        setSummary(summaryData);
-        setProgress(100);
-        addToast("Schedule generated!", "success");
-      } catch (error) { console.error(error); addToast("Generation failed", "error"); } 
-      finally { setProcessing(false); }
-    }, 500);
+        } catch (error) { 
+            console.error(error); 
+            addToast(`Generation failed: ${error.message}`, "error"); 
+            setProcessing(false); 
+        } 
+    }, 2500); 
   };
 
   const loadSampleData = () => {
@@ -1056,6 +1264,8 @@ const WorkforceSchedulerContent = () => {
   };
 
   const handleCellClick = (dayIndex, agentName, currentAssignment, date) => {
+    if (currentAssignment?.isLocked) return;
+
     const agent = agents.find(a => a.name === agentName);
     setEditingCell({
         dayIndex,
@@ -1087,15 +1297,27 @@ const WorkforceSchedulerContent = () => {
     };
      
     const newCoverage = {};
+    const newBilingualCoverage = {}; 
+    
     let total = 0;
-    config.shifts.forEach(s => newCoverage[s.id] = 0);
-    Object.values(dayData.assignments).forEach(assign => {
+    config.shifts.forEach(s => {
+        newCoverage[s.id] = 0;
+        newBilingualCoverage[s.id] = 0;
+    });
+
+    Object.keys(dayData.assignments).forEach(agentName => {
+        const assign = dayData.assignments[agentName];
         if (assign.status === 'WORKING' && assign.shiftId) {
             newCoverage[assign.shiftId] = (newCoverage[assign.shiftId] || 0) + 1;
             total++;
+            const agentObj = agents.find(a => a.name === agentName);
+            if(agentObj && agentObj.isBilingual) {
+                newBilingualCoverage[assign.shiftId] = (newBilingualCoverage[assign.shiftId] || 0) + 1;
+            }
         }
     });
     dayData.shiftCoverage = newCoverage;
+    dayData.bilingualCoverage = newBilingualCoverage; 
     dayData.total = total;
     
     const key = `${SCHEDULE_PREFIX}${selectedYear}_${selectedMonth}`;
@@ -1227,16 +1449,24 @@ const WorkforceSchedulerContent = () => {
                          <input type="number" min="1" max="21" value={config.maxConsecutiveDays} onChange={(e) => setConfig({...config, maxConsecutiveDays: parseInt(e.target.value) || 5})} className={`w-16 border px-2 py-1 text-sm focus:border-orange-500 outline-none transition text-center rounded ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`} />
                      </div>
                      <div className={`flex items-center gap-3 px-4 py-2 border rounded-lg ${isDarkMode ? 'bg-slate-950/50 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
+                         <Split className="w-5 h-5 text-purple-500" />
+                         <span className={`text-xs font-bold uppercase tracking-wide ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>Split Day</span>
+                         <input type="number" min="1" max="28" value={config.splitDate || 15} onChange={(e) => setConfig({...config, splitDate: parseInt(e.target.value) || 15})} className={`w-16 border px-2 py-1 text-sm focus:border-purple-500 outline-none transition text-center rounded ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`} />
+                     </div>
+                     <div className={`flex items-center gap-3 px-4 py-2 border rounded-lg ${isDarkMode ? 'bg-slate-950/50 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
                          <Lock className="w-5 h-5 text-blue-500" />
                          <span className={`text-xs font-bold uppercase tracking-wide ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>Gen Scope</span>
                          <select value={config.generationScope} onChange={(e) => setConfig({...config, generationScope: e.target.value})} className={`border px-2 py-1 text-sm focus:border-blue-500 outline-none transition rounded ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`}>
                              <option value="full">Full Month</option>
-                             <option value="half_1">1st - 15th Only</option>
-                             <option value="half_2">16th - End (Locks 1-15)</option>
+                             <option value="half_1">1st - {config.splitDate || 15}th</option>
+                             <option value="half_2">{config.splitDate + 1 || 16}th - End</option>
                          </select>
                      </div>
                  </div>
             </div>
+
+            {/* CAPACITY CALCULATOR */}
+            <CapacityCalculator agents={agents} config={config} isDarkMode={isDarkMode} />
 
             {/* Shift Definitions */}
             <div className={`mb-8 pb-8 border-b ${isDarkMode ? 'border-white/10' : 'border-slate-200'}`}>
@@ -1333,7 +1563,7 @@ const WorkforceSchedulerContent = () => {
                 <div className={`hidden md:flex items-center gap-1 px-2 py-1 rounded-lg border ${isDarkMode ? 'bg-slate-950/30 border-white/5' : 'bg-slate-100 border-slate-200'}`}>
                     <button onClick={() => setTeamZoom(Math.max(0.5, teamZoom - 0.1))} className={`p-1 hover:text-orange-500 transition ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}><ZoomOut className="w-3 h-3" /></button>
                     <span className={`text-[10px] font-mono w-8 text-center ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{Math.round(teamZoom * 100)}%</span>
-                    <button onClick={() => setTeamZoom(Math.min(1.5, teamZoom + 0.1))} className={`p-1 hover:text-orange-500 transition ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}><ZoomIn className="w-3 h-3" /></button>
+                    <button onClick={() => setTeamZoom(Math.min(1.5, teamZoom + 0.1))} className={`p-1 hover:text-orange-500 transition ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}><ZoomIn className="w-4 h-4" /></button>
                 </div>
             </div>
 
@@ -1374,36 +1604,51 @@ const WorkforceSchedulerContent = () => {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar" style={{ transform: `scale(${teamZoom})`, transformOrigin: 'top left', width: `${100 / teamZoom}%` }}>
-            {visibleAgents.map((agent, index) => (
-                <AgentCard key={index} index={index} agent={agent} shifts={config.shifts} updateAgent={updateAgent} updateAgentPreferredDays={updateAgentPreferredDays} onDeleteClick={handleRemoveAgent} setPtoModalAgentIndex={setPtoModalAgentIndex} isDarkMode={isDarkMode} />
-            ))}
-            {visibleAgents.length === 0 && (
-                <div className="col-span-full py-12 text-center opacity-50">
-                    <Search className="w-12 h-12 mx-auto mb-2 text-slate-500" />
-                    <p className="text-sm font-bold">No agents found matching "{searchTerm}"</p>
-                </div>
-            )}
+            {visibleAgents.map((agent, i) => {
+                // v107 FIX: Always use the REAL index from the master array
+                const realIndex = agents.findIndex(a => a.name === agent.name);
+                return (
+                    <AgentCard 
+                        key={realIndex} 
+                        index={realIndex} 
+                        agent={agent} 
+                        shifts={config.shifts} 
+                        updateAgent={updateAgent} 
+                        updateAgentPreferredDays={updateAgentPreferredDays} 
+                        onDeleteClick={handleRemoveAgent} 
+                        setPtoModalAgentIndex={setPtoModalAgentIndex} 
+                        isDarkMode={isDarkMode}
+                        isHidden={false}
+                    />
+                );
+            })}
           </div>
         </GlassCard>
 
         {/* GENERATE BUTTON */}
-        <button 
-            onClick={handleGenerateClick} 
-            disabled={processing} 
-            className="w-full py-6 bg-gradient-to-r from-orange-500 to-orange-600 hover:to-orange-700 rounded-2xl font-black text-xl text-white shadow-xl shadow-orange-900/20 flex justify-center items-center gap-4 transition-all transform hover:scale-[1.005] active:scale-[0.995] disabled:opacity-50 disabled:cursor-not-allowed mb-12 uppercase tracking-[0.2em] border border-white/10 backdrop-blur-sm relative overflow-hidden"
-        >
-            {processing ? (
-                <>
-                    <Loader2 className="w-6 h-6 animate-spin" />
-                    <span className="z-10">GENERATING... {progress}%</span>
-                    <div className="absolute left-0 top-0 h-full bg-white/20 transition-all duration-300" style={{ width: `${progress}%` }}></div>
-                </>
-            ) : (
-                <>
-                    <Calendar className="w-6 h-6" /> GENERATE SCHEDULE
-                </>
-            )}
-        </button>
+        <div className="flex gap-3 w-full mb-12">
+            <button 
+                onClick={handleGenerateClick} 
+                disabled={processing} 
+                className="flex-1 py-6 bg-gradient-to-r from-orange-500 to-orange-600 hover:to-orange-700 rounded-2xl font-black text-xl text-white shadow-xl shadow-orange-900/20 flex justify-center items-center gap-4 transition-all transform hover:scale-[1.005] active:scale-[0.995] disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-[0.2em] border border-white/10 backdrop-blur-sm relative overflow-hidden"
+            >
+                {processing ? (
+                    <>
+                        <Loader2 className="w-6 h-6 animate-spin" />
+                        <span className="z-10">{loadingText}</span>
+                        <div className="absolute left-0 top-0 h-full bg-white/20 transition-all duration-300" style={{ width: `${progress}%` }}></div>
+                    </>
+                ) : (
+                    <>
+                        <Calendar className="w-6 h-6" /> GENERATE SCHEDULE
+                    </>
+                )}
+            </button>
+            <button onClick={openManualHistory} className={`px-6 rounded-2xl font-bold transition flex flex-col items-center justify-center gap-1 border ${isDarkMode ? 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white border-white/10' : 'bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-800 border-slate-200'}`} title="Manually Input History">
+                <History className="w-5 h-5" />
+                <span className="text-[9px] uppercase tracking-widest">History</span>
+            </button>
+        </div>
 
         {/* RESULTS SECTION (DASHBOARD) */}
         {schedule && summary && (
@@ -1448,95 +1693,19 @@ const WorkforceSchedulerContent = () => {
             setShiftFilter={setShiftFilter}
         />
 
-        {/* DAY STATS MODAL */}
-        {dayStats && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                <GlassCard className="w-full max-w-lg border-slate-700 shadow-2xl" isDarkMode={isDarkMode}>
-                    <div className={`flex justify-between items-center mb-8 p-6 border-b ${isDarkMode ? 'border-white/10' : 'border-slate-200'}`}>
-                        <div><h3 className={`text-2xl font-black flex items-center gap-3 uppercase tracking-tighter ${isDarkMode ? 'text-white' : 'text-slate-900'}`}><PieChart className="w-6 h-6 text-orange-500" /> Daily Breakdown</h3><p className="text-slate-400 text-xs font-bold mt-1 uppercase tracking-[0.2em]">{dayStats.date} • {dayStats.day}</p></div>
-                        <button onClick={() => setDayStats(null)} className="p-2 hover:opacity-75 rounded-full transition"><X className={`w-6 h-6 ${isDarkMode ? 'text-white' : 'text-slate-900'}`} /></button>
-                    </div>
-                    <div className="p-6">
-                        <div className="grid grid-cols-2 gap-4 mb-8">
-                            <div className={`p-5 border-l-4 border-orange-500 text-center rounded-r-xl ${isDarkMode ? 'bg-slate-950' : 'bg-slate-50'}`}><div className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-2">Total Staff</div><div className={`text-4xl font-black ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{dayStats.total}</div></div>
-                            <div className={`p-5 border-l-4 border-emerald-500 text-center rounded-r-xl ${isDarkMode ? 'bg-slate-950' : 'bg-slate-50'}`}><div className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-2">Efficiency</div><div className="text-2xl font-black text-emerald-400">100%</div></div>
-                        </div>
-                        <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Shift Coverage</h4>
-                        <div className="space-y-4 mb-8">
-                            {config.shifts?.map(shift => {
-                                const count = dayStats.shiftCoverage[shift.id] || 0;
-                                const req = config.rules?.[dayStats.day]?.[shift.id]?.minStaff || 0;
-                                const percent = req > 0 ? Math.min((count / req) * 100, 100) : 0;
-                                const isLow = count < req;
-                                return (
-                                    <div key={shift.id}>
-                                        <div className="flex justify-between text-xs mb-2"><span className={`font-bold uppercase tracking-wide ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{shift.name}</span><span className={count < req ? "text-red-500 font-bold" : "text-emerald-500 font-bold"}>{count} / {req}</span></div>
-                                        <div className={`h-2 overflow-hidden rounded-full border ${isDarkMode ? 'bg-slate-950 border-white/5' : 'bg-slate-200 border-slate-300'}`}><div className={`h-full transition-all duration-500 ${count < req ? "bg-red-600" : "bg-emerald-600"}`} style={{width: `${percent}%`}}></div></div>
-                                    </div>
-                                )
-                            })}
-                        </div>
-                    </div>
-                </GlassCard>
-            </div>
-        )}
-
-        {/* PTO MODAL */}
-        {ptoModalAgentIndex !== null && agents[ptoModalAgentIndex] && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-             <GlassCard className="w-full max-w-xl border-slate-700 shadow-2xl" isDarkMode={isDarkMode}>
-                 <div className={`flex justify-between items-center p-6 border-b ${isDarkMode ? 'border-white/10' : 'border-slate-200'}`}>
-                    <div className="flex items-center gap-3">
-                        <div><h3 className={`text-xl font-bold uppercase tracking-wide ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Manage PTO</h3><p className="text-slate-400 text-xs font-bold uppercase tracking-wider mt-1">for {agents[ptoModalAgentIndex].name}</p></div>
-                        <div className={`px-2 py-1 rounded text-[10px] font-bold ${isDarkMode ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-800'}`}>{agents[ptoModalAgentIndex].pto.length} Days Selected</div>
-                    </div>
-                    <button onClick={() => setPtoModalAgentIndex(null)}><X className={`w-5 h-5 ${isDarkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`} /></button>
-                 </div>
-                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                     <div>
-                         <h4 className={`text-xs font-bold uppercase mb-4 tracking-wider ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Select Days (Click to Toggle)</h4>
-                         <div className="grid grid-cols-7 gap-1 text-center mb-2">{['M','T','W','T','F','S','S'].map((d,i) => <div key={i} className="text-[10px] font-bold text-slate-500">{d}</div>)}</div>
-                         <div className="grid grid-cols-7 gap-1">
-                             {getCalendarDays().map((d, i) => {
-                                 if(!d) return <div key={i}></div>;
-                                 const y = selectedYear;
-                                 const m = selectedMonth;
-                                 const dateKey = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                                 const isSelected = agents[ptoModalAgentIndex].pto.includes(dateKey);
-                                 return <button key={i} onClick={() => togglePtoDay(d, m, y)} className={`h-8 w-8 rounded text-xs font-bold transition flex items-center justify-center ${isSelected ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : isDarkMode ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{d}</button>
-                             })}
-                         </div>
-                     </div>
-                     <div className={`border-l pl-6 flex flex-col ${isDarkMode ? 'border-white/10' : 'border-slate-200'}`}>
-                         <h4 className={`text-xs font-bold uppercase mb-4 tracking-wider ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Bulk Add Range</h4>
-                         <div className="flex gap-2 mb-2">
-                             <input type="date" value={ptoRangeStart} onChange={(e) => setPtoRangeStart(e.target.value)} className={`w-full p-2 rounded text-xs border outline-none focus:border-orange-500 ${isDarkMode ? 'bg-slate-950 border-white/10 text-white' : 'bg-white border-slate-300'}`} />
-                             <span className="self-center text-slate-500"><ArrowRight className="w-4 h-4"/></span>
-                             <input type="date" value={ptoRangeEnd} onChange={(e) => setPtoRangeEnd(e.target.value)} className={`w-full p-2 rounded text-xs border outline-none focus:border-orange-500 ${isDarkMode ? 'bg-slate-950 border-white/10 text-white' : 'bg-white border-slate-300'}`} />
-                         </div>
-                         <button onClick={addPtoRange} className="w-full py-2 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs rounded mb-6 transition">Add Range</button>
-                         <div className="flex justify-between items-center mb-2"><h4 className={`text-xs font-bold uppercase tracking-wider ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Selected Dates</h4><span className={`text-[10px] font-bold ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>Total: {agents[ptoModalAgentIndex].pto.length}</span></div>
-                         <div className={`flex-1 overflow-y-auto max-h-[150px] custom-scrollbar border rounded p-2 ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-                            {agents[ptoModalAgentIndex].pto.length === 0 && <div className="text-center text-xs text-slate-500 py-4">No PTO added yet.</div>}
-                            {agents[ptoModalAgentIndex].pto.map(date => (<div key={date} className={`flex justify-between items-center p-2 mb-1 rounded text-xs font-mono font-bold ${isDarkMode ? 'bg-slate-900 text-slate-300' : 'bg-white text-slate-600 border border-slate-100'}`}>{date}<button onClick={() => removePto(date)} className="text-slate-500 hover:text-red-500"><X className="w-3 h-3" /></button></div>))}
-                         </div>
-                     </div>
-                 </div>
-                 <div className={`p-6 pt-0 flex justify-end`}><button onClick={() => setPtoModalAgentIndex(null)} className={`px-8 py-3 font-bold transition text-xs uppercase tracking-widest border rounded-lg ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'}`}>Done</button></div>
-             </GlassCard>
-          </div>
-        )}
-
         {/* TRANSITION MODAL */}
-        {transitionModalOpen && (
+        {transitionModalOpen && transitionData && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-                <GlassCard className="w-full max-w-2xl p-8" isDarkMode={isDarkMode}>
-                    <div className="flex items-center justify-between gap-4 mb-6 pb-6 border-b border-white/10">
+                {/* MODAL CONTAINER - FIXED */}
+                <GlassCard className="w-full max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden" isDarkMode={isDarkMode}>
+                    
+                    {/* HEADER - FIXED */}
+                    <div className="flex-none flex items-center justify-between gap-4 p-6 border-b border-white/10">
                         <div className="flex items-center gap-4">
                             <div className="p-3 bg-orange-500/20 rounded-full text-orange-500"><History className="w-8 h-8"/></div>
                             <div>
                                 <h3 className="text-2xl font-bold text-white">Missing History Detected</h3>
-                                <p className="text-slate-400">{midMonthTransition ? "Please enter status for DAYS 9-15 to ensure continuity." : "Please confirm schedule for last week to ensure continuity."}</p>
+                                <p className="text-slate-400">{midMonthTransition ? "Please enter status for days leading up to the split." : "Please confirm schedule for last week to ensure continuity."}</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1546,40 +1715,50 @@ const WorkforceSchedulerContent = () => {
                         </div>
                     </div>
                     
-                    <div className="overflow-x-auto custom-scrollbar mb-8 border border-white/10 rounded-xl" style={{ transform: `scale(${transZoom})`, transformOrigin: 'top left', width: `${100 / transZoom}%` }}>
-                        <table className="w-full text-sm text-left">
-                            <thead className="bg-white/5 text-slate-400 uppercase text-xs">
-                                <tr>
-                                    <th className="p-4">Agent</th>
-                                    {transitionData.days.map((d, i) => <th key={i} className="p-4 text-center min-w-[80px]">{d.str}</th>)}
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/5">
-                                {agents.map(agent => (
-                                    <tr key={agent.name} className="hover:bg-white/5">
-                                        <td className="p-4 font-bold text-white">{agent.name}</td>
-                                        {transitionData.days.map((_, i) => (
-                                            <td key={i} className="p-2 text-center">
-                                                <button 
-                                                    onClick={() => {
-                                                        const newData = {...transitionData};
-                                                        newData.values[agent.name][i] = !newData.values[agent.name][i];
-                                                        setTransitionData(newData);
-                                                    }}
-                                                    className={`w-8 h-8 rounded font-bold transition ${transitionData.values[agent.name][i] ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-600'}`}
-                                                >
-                                                    {transitionData.values[agent.name][i] ? 'W' : 'O'}
-                                                </button>
-                                            </td>
-                                        ))}
+                    {/* SCROLLABLE TABLE BODY */}
+                    <div className="flex-1 overflow-y-auto overflow-x-auto custom-scrollbar p-6 bg-black/20">
+                        <div className="border border-white/10 rounded-xl overflow-hidden" style={{ transform: `scale(${transZoom})`, transformOrigin: 'top left', width: `${100 / transZoom}%` }}>
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-white/5 text-slate-400 uppercase text-xs">
+                                    <tr>
+                                        <th className="p-3 sticky top-0 bg-slate-900 z-10">Agent</th>
+                                        {transitionData.days.map((d, i) => <th key={i} className="p-2 text-center min-w-[50px] sticky top-0 bg-slate-900 z-10">{d.str}</th>)}
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {agents.map(agent => (
+                                        <tr key={agent.name} className={`hover:bg-white/5 ${agent.isBilingual ? (isDarkMode ? 'bg-emerald-900/20' : 'bg-emerald-50') : ''}`}>
+                                            <td className="p-3 font-bold text-white flex items-center gap-2">
+                                                {agent.name}
+                                                {agent.isBilingual && <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded">🇦🇪 ARABIC</span>}
+                                            </td>
+                                            {transitionData.values && transitionData.values[agent.name] && transitionData.days.map((_, i) => (
+                                                <td key={i} className="p-2 text-center">
+                                                    <button 
+                                                        onClick={() => {
+                                                            const newData = {...transitionData};
+                                                            newData.values[agent.name][i] = !newData.values[agent.name][i];
+                                                            setTransitionData(newData);
+                                                        }}
+                                                        className={`w-8 h-8 rounded font-bold transition ${transitionData.values[agent.name][i] ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-600'}`}
+                                                    >
+                                                        {transitionData.values[agent.name][i] ? 'W' : 'O'}
+                                                    </button>
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
 
-                    <div className="flex justify-end gap-4">
-                        <button onClick={() => setTransitionModalOpen(false)} className="px-6 py-3 rounded-xl font-bold text-slate-400 hover:bg-white/5 transition">Cancel</button>
+                    {/* FOOTER - FIXED */}
+                    <div className="flex-none flex justify-end gap-4 p-6 border-t border-white/10 bg-black/20">
+                        {/* New "Skip" button requested in Step 97 */}
+                        <button onClick={handleSkipHistory} className="px-6 py-3 rounded-xl font-bold text-slate-400 hover:bg-white/5 transition flex items-center gap-2">
+                             Skip & Generate Fresh
+                        </button>
                         <button onClick={handleTransitionSubmit} className="px-8 py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl shadow-lg shadow-orange-500/20 transition transform hover:scale-105">Confirm & Generate</button>
                     </div>
                 </GlassCard>
@@ -1622,6 +1801,53 @@ const WorkforceSchedulerContent = () => {
                   </div>
                </div>
             </GlassCard>
+          </div>
+        )}
+
+        {/* PTO MODAL (v107: Robust Indexing Check) */}
+        {ptoModalAgentIndex !== null && agents[ptoModalAgentIndex] && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+             <GlassCard className="w-full max-w-xl border-slate-700 shadow-2xl" isDarkMode={isDarkMode}>
+                 <div className={`flex justify-between items-center p-6 border-b ${isDarkMode ? 'border-white/10' : 'border-slate-200'}`}>
+                    <div className="flex items-center gap-3">
+                        <div><h3 className={`text-xl font-bold uppercase tracking-wide ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Manage PTO</h3><p className="text-slate-400 text-xs font-bold uppercase tracking-wider mt-1">for {agents[ptoModalAgentIndex].name}</p></div>
+                        <div className={`px-2 py-1 rounded text-[10px] font-bold ${isDarkMode ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-800'}`}>{agents[ptoModalAgentIndex].pto.length} Days Selected</div>
+                    </div>
+                    <button onClick={() => setPtoModalAgentIndex(null)}><X className={`w-5 h-5 ${isDarkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`} /></button>
+                 </div>
+                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                     <div>
+                         <h4 className={`text-xs font-bold uppercase mb-4 tracking-wider ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Select Days (Click to Toggle)</h4>
+                         <div className="grid grid-cols-7 gap-1 text-center mb-2">{['M','T','W','T','F','S','S'].map((d,i) => <div key={i} className="text-[10px] font-bold text-slate-500">{d}</div>)}</div>
+                         <div className="grid grid-cols-7 gap-1">
+                             {getCalendarDays().map((d, i) => {
+                                 if(!d) return <div key={i}></div>;
+                                 const y = selectedYear;
+                                 const m = selectedMonth;
+                                 const dateKey = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                                 // v107: Safe access check
+                                 const isSelected = agents[ptoModalAgentIndex]?.pto?.includes(dateKey);
+                                 return <button key={i} onClick={() => togglePtoDay(d, m, y)} className={`h-8 w-8 rounded text-xs font-bold transition flex items-center justify-center ${isSelected ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : isDarkMode ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{d}</button>
+                             })}
+                         </div>
+                     </div>
+                     <div className={`border-l pl-6 flex flex-col ${isDarkMode ? 'border-white/10' : 'border-slate-200'}`}>
+                         <h4 className={`text-xs font-bold uppercase mb-4 tracking-wider ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Bulk Add Range</h4>
+                         <div className="flex gap-2 mb-2">
+                             <input type="date" value={ptoRangeStart} onChange={(e) => setPtoRangeStart(e.target.value)} className={`w-full p-2 rounded text-xs border outline-none focus:border-orange-500 ${isDarkMode ? 'bg-slate-950 border-white/10 text-white' : 'bg-white border-slate-300'}`} />
+                             <span className="self-center text-slate-500"><ArrowRight className="w-4 h-4"/></span>
+                             <input type="date" value={ptoRangeEnd} onChange={(e) => setPtoRangeEnd(e.target.value)} className={`w-full p-2 rounded text-xs border outline-none focus:border-orange-500 ${isDarkMode ? 'bg-slate-950 border-white/10 text-white' : 'bg-white border-slate-300'}`} />
+                         </div>
+                         <button onClick={addPtoRange} className="w-full py-2 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs rounded mb-6 transition">Add Range</button>
+                         <div className="flex justify-between items-center mb-2"><h4 className={`text-xs font-bold uppercase tracking-wider ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Selected Dates</h4><span className={`text-[10px] font-bold ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>Total: {agents[ptoModalAgentIndex].pto.length}</span></div>
+                         <div className={`flex-1 overflow-y-auto max-h-[150px] custom-scrollbar border rounded p-2 ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                            {agents[ptoModalAgentIndex].pto.length === 0 && <div className="text-center text-xs text-slate-500 py-4">No PTO added yet.</div>}
+                            {agents[ptoModalAgentIndex].pto.map(date => (<div key={date} className={`flex justify-between items-center p-2 mb-1 rounded text-xs font-mono font-bold ${isDarkMode ? 'bg-slate-900 text-slate-300' : 'bg-white text-slate-600 border border-slate-100'}`}>{date}<button onClick={() => removePto(date)} className="text-slate-500 hover:text-red-500"><X className="w-3 h-3" /></button></div>))}
+                         </div>
+                     </div>
+                 </div>
+                 <div className={`p-6 pt-0 flex justify-end`}><button onClick={() => setPtoModalAgentIndex(null)} className={`px-8 py-3 font-bold transition text-xs uppercase tracking-widest border rounded-lg ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'}`}>Done</button></div>
+             </GlassCard>
           </div>
         )}
       </div>
